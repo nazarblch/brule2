@@ -1,0 +1,3 @@
+[submodule "gans"]
+	path = gans
+	url = https://github.com/nazarblch/gans-pytorch

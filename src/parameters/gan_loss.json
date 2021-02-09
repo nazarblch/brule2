@@ -1,0 +1,7 @@
+{
+  "BCE content gan": 0,
+  "L1 fake": 1,
+  "L1 restored": 30,
+  "L1 style gan": 10,
+  "R_s": 10
+}
