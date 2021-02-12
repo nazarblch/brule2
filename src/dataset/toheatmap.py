@@ -5,7 +5,6 @@ from sklearn.neighbors import kneighbors_graph
 from torch import Tensor
 import numpy as np
 from torch_cluster import knn_graph, graclus_cluster
-from modules.ToImage import ToImage2D
 from parameters.path import Paths
 
 
