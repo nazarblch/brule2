@@ -9,7 +9,7 @@ sys.path.append(os.path.join(sys.path[0], '../../gans/'))
 from wr import WR
 
 import random
-from models.hg import HG_skeleton, HGDiscriminator
+from models.hg import HG_skeleton, HGDiscriminator, HG_skeleton_2
 from gan.loss.loss_base import Loss
 
 import time
@@ -30,14 +30,22 @@ from gan.noise.stylegan import mixing_noise
 from optim.accumulator import Accumulator
 from parameters.path import Paths
 
+def verka(enc):
+    sum_loss = 0
+    for i, batch in enumerate(LazyLoader.w300().test_loader):
+        data = batch['data'].to(device)
+        landmarks = batch["meta"]["keypts_normalized"].cuda()
+        pred = enc(data)["mes"].coord
+        eye_dist = landmarks[:, 45] - landmarks[:, 36]
+        eye_dist = eye_dist.pow(2).sum(dim=1).sqrt()
+        sum_loss += ((pred - landmarks).pow(2).sum(dim=2).sqrt().mean(dim=1) / eye_dist).sum().item()
+    print("test loss: ", sum_loss / len(LazyLoader.w300().test_dataset))
+    return sum_loss / len(LazyLoader.w300().test_dataset)
 
-def sup_loss(pred_mes, target_mes):
 
-    heatmapper = ToGaussHeatMap(256, 4)
+def sup_loss(pred_hm, target_hm, pred_mes, target_mes):
 
-    pred_hm = heatmapper.forward(pred_mes.coord)
     pred_hm = pred_hm / (pred_hm.sum(dim=[2, 3], keepdim=True).detach() + 1e-8)
-    target_hm = heatmapper.forward(target_mes.coord).detach()
     target_hm = target_hm / target_hm.sum(dim=[2, 3], keepdim=True).detach()
 
     return Loss(
@@ -58,7 +66,7 @@ manualSeed = 71
 random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 
-batch_size = 12
+batch_size = 8
 image_size = 256
 noise_size = 512
 n_mlp = 8
@@ -88,9 +96,9 @@ heatmap2image = HeatmapToImage(
 heatmap2image.load_state_dict(weights['gi'])
 heatmap2image = heatmap2image.cuda()
 
-
+heatmapper = ToGaussHeatMap(64, 2)
 skeletoner = CoordToGaussSkeleton(256, 4)
-hg = HG_skeleton(skeletoner).cuda()
+hg = HG_skeleton_2(skeletoner).cuda()
 hm_discriminator = Discriminator(image_size, input_nc=1).cuda()
 
 gan_model_tuda = StyleGanModel[HeatmapToImage](heatmap2image, StyleGANLoss(discriminator_img), (0.001, 0.0015))
@@ -126,10 +134,10 @@ for i in range(100000):
     gan_model_obratno.discriminator_train([skeleton], [sk_pred.detach()])
     gan_model_obratno.generator_loss([skeleton], [sk_pred]).minimize_step(gan_model_obratno.optimizer.opt_min)
 
-
     fake2, _ = heatmap2image.forward(skeleton, noise)
-    mes_pred2 = UniformMeasure2D01(hg.forward(fake2)["coords"])
-    WR.writable("cycle", sup_loss)(mes_pred2, measure).minimize_step(gan_model_tuda.optimizer.opt_min, gan_model_obratno.optimizer.opt_min)
+    pred2 = hg.forward(fake2)
+    hm_ref = heatmapper.forward(measure.coord)
+    WR.writable("cycle", sup_loss)(pred2["hm"], hm_ref, pred2["mes"], measure).minimize_step(gan_model_tuda.optimizer.opt_min, gan_model_obratno.optimizer.opt_min)
 
     if i % 10000 == 0 and i > 0:
         torch.save(
@@ -145,6 +153,10 @@ for i in range(100000):
     if i % 100 == 0:
         print(i)
         with torch.no_grad():
+
+            tl = verka(hg)
+            writer.add_scalar("verka", tl, i)
+
             sk_pred = hg.forward(real_img)["skeleton"]
             fake, _ = heatmap2image.forward(skeleton, noise)
             send_images_to_tensorboard(writer, fake + skeleton, "FAKE", i)

@@ -34,7 +34,7 @@ def sample_data(loader):
 class W300DatasetLoader:
 
     batch_size = 8
-    test_batch_size = 32
+    test_batch_size = 16
 
     def __init__(self):
         dataset_train = ThreeHundredW(f"{Paths.default.data()}/300w", train=True, imwidth=500, crop=15)
