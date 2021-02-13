@@ -383,7 +383,7 @@ class HG_skeleton(nn.Module):
         assert coords.max().item() < 2
 
         return {
-            "coords": coords,
+            "mes": UniformMeasure2D01(coords),
             "skeleton": sk
         }
 

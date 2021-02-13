@@ -1,3 +1,6 @@
 [submodule "gans"]
 	path = gans
 	url = https://github.com/nazarblch/gans-pytorch
+[submodule "keypointgan"]
+	path = keypointgan
+	url = https://github.com/tomasjakab/keypointgan.git
