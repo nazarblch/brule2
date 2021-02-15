@@ -121,6 +121,10 @@ style_encoder = style_encoder.cuda()
 decoder = HeatmapAndStyleToImage(heatmap2image)
 style_opt = optim.Adam(style_encoder.parameters(), lr=5e-4)
 
+style_encoder = GradualStyleEncoder(50, 3, style_count=14).cuda()
+decoder = HeatmapAndStyleToImage(heatmap2image)
+style_opt = optim.Adam(style_encoder.parameters(), lr=1e-4)
+
 writer = SummaryWriter(f"{Paths.default.board()}/hm2img{int(time.time())}")
 WR.writer = writer
 
