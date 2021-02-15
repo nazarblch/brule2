@@ -15,3 +15,13 @@ class WeightedSamplesLoss(nn.Module):
     def forward(self, m1: ProbabilityMeasure, m2: ProbabilityMeasure):
         batch_loss = self.loss(m1.probability, m1.coord, m2.probability, m2.coord)
         return Loss((batch_loss * self.weights).sum())
+
+
+class WasLoss(nn.Module):
+    def __init__(self, blur=.01, scaling=.9, diameter=None, p: int = 2):
+        super(WasLoss, self).__init__()
+        self.loss = SamplesLoss("sinkhorn", blur=blur, scaling=scaling, debias=False, diameter=diameter, p=p)
+
+    def forward(self, m1: ProbabilityMeasure, m2: ProbabilityMeasure):
+        batch_loss = self.loss(m1.probability, m1.coord, m2.probability, m2.coord)
+        return Loss(batch_loss.mean())

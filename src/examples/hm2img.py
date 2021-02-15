@@ -85,7 +85,7 @@ torch.cuda.set_device(device)
 W300DatasetLoader.batch_size = batch_size
 
 
-starting_model_number = 440000
+starting_model_number = 450000
 weights = torch.load(
     f'{Paths.default.models()}/hm2img_{str(starting_model_number).zfill(6)}.pt',
     map_location="cpu"
@@ -121,9 +121,6 @@ style_encoder = style_encoder.cuda()
 decoder = HeatmapAndStyleToImage(heatmap2image)
 style_opt = optim.Adam(style_encoder.parameters(), lr=5e-4)
 
-style_encoder = GradualStyleEncoder(50, 3, style_count=14).cuda()
-decoder = HeatmapAndStyleToImage(heatmap2image)
-style_opt = optim.Adam(style_encoder.parameters(), lr=1e-4)
 
 writer = SummaryWriter(f"{Paths.default.board()}/hm2img{int(time.time())}")
 WR.writer = writer
@@ -131,7 +128,7 @@ WR.writer = writer
 #%%
 
 batch = next(LazyLoader.w300().loader_train_inf)
-test_img = batch["data"].cuda()
+test_img = next(LazyLoader.celeba().loader).cuda()
 test_landmarks = batch["meta"]["keypts_normalized"].cuda()
 test_measure = UniformMeasure2D01(torch.clamp(test_landmarks, max=1))
 test_skeleton = skeletoner.forward(test_measure.coord).sum(1, keepdim=True).detach()
