@@ -19,7 +19,7 @@ image_size = 256
 batch_size = 1
 padding = 68
 
-
+# Download 300w from https://ibug.doc.ic.ac.uk/resources/300-W/
 dataset_train = Subset(ThreeHundredW(f"{Paths.default.data()}/300w", train=True, imwidth=500, crop=15), range(100))
 file1 = open('w300graph100.txt', 'w')
 
