@@ -1,6 +1,6 @@
 {
-  "img": 100,
-  "hm": 10,
-  "obratno": 0.01,
-  "style": 10
+  "img": 500,
+  "hm": 300,
+  "obratno": 0.1,
+  "style": 5
 }

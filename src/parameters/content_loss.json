@@ -4,5 +4,6 @@
   "R_t": 1500.0,
   "L1 image": 10.0,
   "fake_content loss": 10.0,
+  "obratno": 0.1,
   "borj4_w300": 0.0
 }

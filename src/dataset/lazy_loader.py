@@ -74,7 +74,7 @@ class CelebaWithKeyPoints:
         return albumentations.Compose([
             albumentations.HorizontalFlip(),
             albumentations.Resize(CelebaWithKeyPoints.image_size, CelebaWithKeyPoints.image_size),
-            albumentations.ElasticTransform(p=0.5, alpha=100, alpha_affine=1, sigma=10),
+            # albumentations.ElasticTransform(p=0.5, alpha=100, alpha_affine=1, sigma=10),
             albumentations.ShiftScaleRotate(p=0.5, rotate_limit=10),
             albumentations.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
             AlbToTensor()
@@ -211,5 +211,8 @@ class LazyLoader:
     @staticmethod
     def celeba_test(batch_size=1):
         if not LazyLoader.celebaWithLandmarks:
-            LazyLoader.celebaWithLandmarks = DataLoader(CelebaWithLandmarks(), batch_size=batch_size)
+            LazyLoader.celebaWithLandmarks = sample_data(DataLoader(
+                CelebaWithLandmarks(),
+                batch_size=batch_size,
+                drop_last=True))
         return LazyLoader.celebaWithLandmarks
