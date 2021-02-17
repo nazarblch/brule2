@@ -15,5 +15,11 @@ def post_transform():
 def mix_transform(resize):
     return Compose([
         pre_transform(resize=resize),
-        post_transform()
+        HorizontalFlip(),
+        post_transform(),
+        OneOf([
+            RandomContrast(),
+            RandomGamma(),
+            RandomBrightness(),
+        ], p=0.3),
     ])

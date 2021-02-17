@@ -60,7 +60,7 @@ def sup_loss(pred_mes, target_mes):
 
     return Loss(
         nn.BCELoss()(pred_hm, target_hm) * 1000000 +
-        nn.MSELoss()(pred_mes.coord, target_mes.coord) * 50000
+        nn.MSELoss()(pred_mes.coord, target_mes.coord) * 10000
     )
 
 def l1_loss(pred, target):
@@ -91,7 +91,7 @@ torch.cuda.set_device(device)
 W300DatasetLoader.batch_size = batch_size
 
 
-starting_model_number = 450000
+starting_model_number = 470000
 weights = torch.load(
     f'{Paths.default.models()}/hm2img_{str(starting_model_number).zfill(6)}.pt',
     map_location="cpu"
@@ -110,13 +110,13 @@ heatmap2image.load_state_dict(weights['gi'])
 heatmap2image = heatmap2image.cuda()
 
 # heatmapper = ToGaussHeatMap(64, 1)
-heatmapper = ToGaussHeatMap(256, 1)
+heatmapper = ToGaussHeatMap(256, 4)
 skeletoner = CoordToGaussSkeleton(256, 4)
 hg = HG_skeleton(skeletoner)
 hg.load_state_dict(weights['gh'])
 hg = hg.cuda()
 hm_discriminator = Discriminator(image_size, input_nc=68)
-# hm_discriminator.load_state_dict(weights["dh"])
+hm_discriminator.load_state_dict(weights["dh"])
 hm_discriminator = hm_discriminator.cuda()
 
 gan_model_tuda = StyleGanModel[HeatmapToImage](heatmap2image, StyleGANLoss(discriminator_img), (0.001/2, 0.0015/2))
@@ -137,7 +137,8 @@ batch = next(LazyLoader.w300().loader_train_inf)
 test_img = batch["data"].cuda()
 test_landmarks = batch["meta"]["keypts_normalized"].cuda()
 test_measure = UniformMeasure2D01(torch.clamp(test_landmarks, max=1))
-test_skeleton = skeletoner.forward(test_measure.coord).sum(1, keepdim=True).detach()
+# test_skeleton = skeletoner.forward(test_measure.coord).sum(1, keepdim=True).detach()
+test_hm = heatmapper.forward(test_measure.coord).sum(1, keepdim=True).detach()
 test_noise = mixing_noise(batch_size, 512, 0.9, device)
 
 psp_loss = PSPLoss().cuda()
@@ -151,13 +152,14 @@ for i in range(100000):
     real_img = batch["data"].cuda()
     landmarks = batch["meta"]["keypts_normalized"].cuda()
     measure = UniformMeasure2D01(torch.clamp(landmarks, max=1))
-    skeleton = skeletoner.forward(measure.coord).sum(1, keepdim=True).detach()
+    # skeleton = skeletoner.forward(measure.coord).sum(1, keepdim=True).detach()
+    heatmap = heatmapper.forward(measure.coord).sum(1, keepdim=True).detach()
     noise = mixing_noise(batch_size, 512, 0.9, device)
 
     #%%
     coefs = json.load(open("../parameters/cycle_loss.json"))
 
-    fake, fake_latent = heatmap2image.forward(skeleton, noise, return_latents=True)
+    fake, fake_latent = heatmap2image.forward(heatmap, noise, return_latents=True)
     fake_latent = torch.cat([f[:, None, :] for f in fake_latent], dim=1).detach()
     fake_latent_pred = style_encoder.forward(fake)
 
@@ -174,12 +176,12 @@ for i in range(100000):
     gan_model_obratno.discriminator_train([hm_ref], [hm_pred.detach()])
     gan_model_obratno.generator_loss([hm_ref], [hm_pred]).__mul__(coefs["obratno"]).minimize_step(gan_model_obratno.optimizer.opt_min)
 
-    fake2, _ = heatmap2image.forward(skeleton, noise)
+    fake2, _ = heatmap2image.forward(heatmap, noise)
     pred2 = hg.forward(fake2)
     WR.writable("cycle", sup_loss)(pred2["mes"], measure).__mul__(coefs["hm"]).minimize_step(
         gan_model_tuda.optimizer.opt_min, gan_model_obratno.optimizer.opt_min)
 
-    sk_pred3 = hg.forward(real_img[:4])["skeleton"]
+    sk_pred3 = heatmapper.forward(hg.forward(real_img[:4])["mes"].coord).sum(1, keepdim=True)
     latent = style_encoder.forward(real_img[:4])
     restored = decoder.forward(sk_pred3, latent)
     WR.writable("cycle2", psp_loss.forward)(real_img[:4], real_img[:4], restored, latent).__mul__(coefs["img"]).minimize_step(
@@ -204,12 +206,12 @@ for i in range(100000):
             tl = verka(hg)
             writer.add_scalar("verka", tl, i)
 
-            sk_pred = hg.forward(test_img)["skeleton"]
-            fake, _ = heatmap2image.forward(test_skeleton, test_noise)
+            sk_pred = heatmapper.forward(hg.forward(test_img)["mes"].coord).sum(1, keepdim=True)
+            fake, _ = heatmap2image.forward(test_hm, test_noise)
             latent = style_encoder.forward(test_img)
             restored = decoder.forward(sk_pred, latent)
 
-            send_images_to_tensorboard(writer, fake + skeleton, "FAKE", i)
+            send_images_to_tensorboard(writer, fake + test_hm, "FAKE", i)
             send_images_to_tensorboard(writer, test_img + sk_pred, "REAL", i)
             send_images_to_tensorboard(writer, restored + sk_pred, "RESTORED", i)
 

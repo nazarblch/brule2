@@ -388,42 +388,28 @@ class HG_skeleton(nn.Module):
         }
 
 
-class HG_skeleton_2(nn.Module):
+class HG_heatmap(nn.Module):
 
-    def __init__(self, skeletoner, num_classes=68, heatmap_size=64):
+    def __init__(self, num_classes=68, heatmap_size=64):
         super().__init__()
         self.num_classes = num_classes
         self.heatmap_size = heatmap_size
         self.model = hg2(num_classes=self.num_classes, num_blocks=1)
 
-        self.skeletoner = skeletoner
+        self.upsample = nn.Sequential(
+            nn.ConvTranspose2d(num_classes, num_classes, 3, stride=2, padding=1),
+            nn.BatchNorm2d(num_classes),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.ConvTranspose2d(num_classes, num_classes, 3, stride=2, padding=1)
+        )
 
-    def postproc(self, hm: Tensor):
-
-        B = hm.shape[0]
-
-        return hm.clamp(-100, 30)\
-                   .view(B, self.num_classes, -1)\
-                   .softmax(dim=2)\
-                   .view(B, self.num_classes, self.heatmap_size, self.heatmap_size)
 
     def forward(self, image: Tensor):
-        B, C, D, D = image.shape
         heatmaps: List[Tensor] = self.model.forward(image)
         out = heatmaps[-1]
-        out = self.postproc(out)
+        out = self.upsample(out)
 
-        coords = heatmap_to_measure(out)[0]
-        sk = self.skeletoner.forward(coords).sum(dim=1, keepdim=True)
-
-        assert coords.max().item() is not None
-        assert coords.max().item() < 2
-
-        return {
-            "hm": out,
-            "mes": UniformMeasure2D01(coords),
-            "skeleton": sk
-        }
+        return out
 
 
 class HGDiscriminator(Discriminator):

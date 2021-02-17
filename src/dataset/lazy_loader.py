@@ -7,9 +7,10 @@ from torch.utils import data
 from torch.utils.data import DataLoader
 
 from dataset.cardio_dataset import ImageMeasureDataset, ImageDataset, CelebaWithLandmarks
+from dataset.cardio_keypts import CardioDataset
 from dataset.d300w import ThreeHundredW
 from dataset.MAFL import MAFLDataset
-from albumentations.pytorch.transforms import ToTensorV2 as AlbToTensor
+from albumentations.pytorch.transforms import ToTensorV2 as AlbToTensor, ToTensorV2
 
 from parameters.path import Paths
 
@@ -142,6 +143,32 @@ class Celeba:
         self.loader = sample_data(self.loader)
 
 
+class Cardio:
+
+    image_size = 256
+    batch_size = 8
+
+    transforms = albumentations.Compose([
+        albumentations.Resize(image_size, image_size),
+        albumentations.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ToTensorV2()
+    ])
+
+    def __init__(self):
+        path = "/raid/data/ibespalov/CHAZOV_dataset/folds4chamb.csv"
+        dataset_train = CardioDataset(path, train=True, transform=Cardio.transforms)
+
+        self.loader_train = data.DataLoader(
+            dataset_train,
+            batch_size=Cardio.batch_size,
+            sampler=data_sampler(dataset_train, shuffle=True, distributed=False),
+            drop_last=True,
+            num_workers=20
+        )
+
+        self.loader_train_inf = sample_data(self.loader_train)
+
+
 class MAFL:
 
     batch_size = 8
@@ -180,6 +207,7 @@ class LazyLoader:
     w300_save: Optional[W300DatasetLoader] = None
     celeba_kp_save: Optional[CelebaWithKeyPoints] = None
     celeba_save: Optional[Celeba] = None
+    cardio_save: Optional[Cardio] = None
     celebaWithLandmarks: Optional[CelebaWithLandmarks] = None
     mafl_save: Optional[MAFL] = None
 
@@ -207,6 +235,12 @@ class LazyLoader:
         if not LazyLoader.celeba_save:
             LazyLoader.celeba_save = Celeba()
         return LazyLoader.celeba_save
+
+    @staticmethod
+    def cardio():
+        if not LazyLoader.cardio_save:
+            LazyLoader.cardio_save = Cardio()
+        return LazyLoader.cardio_save
 
     @staticmethod
     def celeba_test(batch_size=1):
