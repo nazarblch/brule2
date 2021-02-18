@@ -9,7 +9,7 @@ from train_procedure import gan_trainer, content_trainer_with_gan, coord_hm_loss
 sys.path.append(os.path.join(sys.path[0], '../'))
 sys.path.append(os.path.join(sys.path[0], '../../gans/'))
 
-from models.hg import HG_skeleton
+from models.hg import HG_skeleton, HG_heatmap
 
 from wr import WR
 
@@ -20,7 +20,7 @@ import random
 from gan.loss.loss_base import Loss
 
 import time
-from dataset.toheatmap import ToGaussHeatMap, CoordToGaussSkeleton
+from dataset.toheatmap import ToGaussHeatMap, CoordToGaussSkeleton, heatmap_to_measure
 
 from typing import List
 import torch.utils.data
@@ -43,7 +43,7 @@ def verka(enc):
     for i, batch in enumerate(LazyLoader.w300().test_loader):
         data = batch['data'].to(device)
         landmarks = batch["meta"]["keypts_normalized"].cuda()
-        pred = enc(data)["mes"].coord
+        pred, _ = heatmap_to_measure(enc(data))
         eye_dist = landmarks[:, 45] - landmarks[:, 36]
         eye_dist = eye_dist.pow(2).sum(dim=1).sqrt()
         sum_loss += ((pred - landmarks).pow(2).sum(dim=2).sqrt().mean(dim=1) / eye_dist).sum().item()
@@ -51,16 +51,17 @@ def verka(enc):
     return sum_loss / len(LazyLoader.w300().test_dataset)
 
 
-def sup_loss(pred_mes, target_mes):
-    pred_hm = heatmapper.forward(pred_mes.coord)
+def sup_loss(pred_hm, target_mes):
     target_hm = heatmapper.forward(target_mes.coord)
 
     pred_hm = pred_hm / (pred_hm.sum(dim=[1, 2, 3], keepdim=True).detach() + 1e-8)
     target_hm = target_hm / target_hm.sum(dim=[1, 2, 3], keepdim=True).detach()
 
+    pred_coord, _ = heatmap_to_measure(pred_hm)
+
     return Loss(
         nn.BCELoss()(pred_hm, target_hm) * 1000000 +
-        nn.MSELoss()(pred_mes.coord, target_mes.coord) * 20000
+        nn.MSELoss()(pred_coord, target_mes.coord) * 10000
     )
 
 def l1_loss(pred, target):
@@ -111,16 +112,16 @@ heatmap2image = heatmap2image.cuda()
 
 # heatmapper = ToGaussHeatMap(64, 1)
 heatmapper = ToGaussHeatMap(256, 4)
-skeletoner = CoordToGaussSkeleton(256, 4)
-hg = HG_skeleton(skeletoner)
-hg.load_state_dict(weights['gh'])
+# skeletoner = CoordToGaussSkeleton(256, 4)
+hg = HG_heatmap()
+# hg.load_state_dict(weights['gh'])
 hg = hg.cuda()
 hm_discriminator = Discriminator(image_size, input_nc=68)
 hm_discriminator.load_state_dict(weights["dh"])
 hm_discriminator = hm_discriminator.cuda()
 
-gan_model_tuda = StyleGanModel[HeatmapToImage](heatmap2image, StyleGANLoss(discriminator_img), (0.001/4, 0.0015/4))
-gan_model_obratno = StyleGanModel[HG_skeleton](hg, StyleGANLoss(hm_discriminator), (1e-5, 0.0015/4))
+gan_model_tuda = StyleGanModel[HeatmapToImage](heatmap2image, StyleGANLoss(discriminator_img), (0.001/2, 0.0015/2))
+gan_model_obratno = StyleGanModel[HG_skeleton](hg, StyleGANLoss(hm_discriminator), (2e-5, 0.0015/2))
 
 style_encoder = GradualStyleEncoder(50, 3, style_count=14)
 style_encoder.load_state_dict(weights["s"])
@@ -142,9 +143,6 @@ test_hm = heatmapper.forward(test_measure.coord).sum(1, keepdim=True).detach()
 test_noise = mixing_noise(batch_size, 512, 0.9, device)
 
 psp_loss = PSPLoss().cuda()
-
-image_accumulator = Accumulator(heatmap2image, decay=0.99, write_every=100)
-hm_accumulator = Accumulator(hg, decay=0.99, write_every=100)
 
 for i in range(100000):
 
@@ -174,24 +172,23 @@ for i in range(100000):
 
     #%%
 
-    hm_pred = heatmapper.forward(hg.forward(real_img)["mes"].coord)
+    hm_pred = hg.forward(real_img)
     hm_ref = heatmapper.forward(measure.coord).detach()
+    print(hm_pred[0][0].sum().item(), hm_ref[0][0].sum().item())
     gan_model_obratno.discriminator_train([hm_ref], [hm_pred.detach()])
     gan_model_obratno.generator_loss([hm_ref], [hm_pred]).__mul__(coefs["obratno"]).minimize_step(gan_model_obratno.optimizer.opt_min)
 
     fake2, _ = heatmap2image.forward(heatmap, noise)
     pred2 = hg.forward(fake2)
-    WR.writable("cycle", sup_loss)(pred2["mes"], measure).__mul__(coefs["hm"]).minimize_step(
+    WR.writable("cycle", sup_loss)(pred2, measure).__mul__(coefs["hm"]).minimize_step(
         gan_model_tuda.optimizer.opt_min, gan_model_obratno.optimizer.opt_min)
 
-    sk_pred3 = heatmapper.forward(hg.forward(real_img[:4])["mes"].coord).sum(1, keepdim=True)
+    sk_pred3 = hg.forward(real_img[:4])
+    sk_pred3 = heatmapper.forward(heatmap_to_measure(sk_pred3)[0]).sum(1, keepdim=True)
     latent = style_encoder.forward(real_img[:4])
     restored = decoder.forward(sk_pred3, latent)
     WR.writable("cycle2", psp_loss.forward)(real_img[:4], real_img[:4], restored, latent).__mul__(coefs["img"]).minimize_step(
         gan_model_tuda.optimizer.opt_min, gan_model_obratno.optimizer.opt_min, style_opt)
-
-    image_accumulator.step(i)
-    hm_accumulator.step(i)
 
     if i % 10000 == 0 and i > 0:
         torch.save(
@@ -212,7 +209,7 @@ for i in range(100000):
             tl = verka(hg)
             writer.add_scalar("verka", tl, i)
 
-            sk_pred = heatmapper.forward(hg.forward(test_img)["mes"].coord).sum(1, keepdim=True)
+            sk_pred = hg.forward(test_img).sum(1, keepdim=True)
             fake, _ = heatmap2image.forward(test_hm, test_noise)
             latent = style_encoder.forward(test_img)
             restored = decoder.forward(sk_pred, latent)
@@ -220,4 +217,5 @@ for i in range(100000):
             send_images_to_tensorboard(writer, fake + test_hm, "FAKE", i)
             send_images_to_tensorboard(writer, test_img + sk_pred, "REAL", i)
             send_images_to_tensorboard(writer, restored + sk_pred, "RESTORED", i)
+            send_images_to_tensorboard(writer, sk_pred, "HM", i)
 

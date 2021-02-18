@@ -3,11 +3,13 @@ import json
 import math
 import sys, os
 
+
+sys.path.append(os.path.join(sys.path[0], '/home/nazar/PycharmProjects/brule2/src'))
+sys.path.append(os.path.join(sys.path[0], '/home/nazar/PycharmProjects/brule2/gans/'))
+
 from gan.loss.perceptual.psp import PSPLoss
 from train_procedure import gan_trainer, content_trainer_with_gan, coord_hm_loss
 
-sys.path.append(os.path.join(sys.path[0], '../'))
-sys.path.append(os.path.join(sys.path[0], '../../gans/'))
 
 from models.hg import HG_skeleton
 
@@ -27,7 +29,7 @@ import torch.utils.data
 from torch import Tensor, nn
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
-from dataset.lazy_loader import LazyLoader, Celeba, W300DatasetLoader
+from dataset.lazy_loader import LazyLoader, Celeba, W300DatasetLoader, Cardio
 from dataset.probmeasure import UniformMeasure2D01
 from gan.loss.stylegan import StyleGANLoss
 from gan.models.stylegan import StyleGanModel, CondStyleGanModel
@@ -40,15 +42,13 @@ from parameters.path import Paths
 
 def verka(enc):
     sum_loss = 0
-    for i, batch in enumerate(LazyLoader.w300().test_loader):
-        data = batch['data'].to(device)
-        landmarks = batch["meta"]["keypts_normalized"].cuda()
+    for i, batch in enumerate(LazyLoader.cardio().test_loader):
+        data = batch['image'].to(device)
+        landmarks = batch["keypoints"].cuda()
         pred = enc(data)["mes"].coord
-        eye_dist = landmarks[:, 45] - landmarks[:, 36]
-        eye_dist = eye_dist.pow(2).sum(dim=1).sqrt()
-        sum_loss += ((pred - landmarks).pow(2).sum(dim=2).sqrt().mean(dim=1) / eye_dist).sum().item()
-    print("test loss: ", sum_loss / len(LazyLoader.w300().test_dataset))
-    return sum_loss / len(LazyLoader.w300().test_dataset)
+        sum_loss += ((pred - landmarks).pow(2).sum(dim=2).sqrt().mean(dim=1)).sum().item()
+    print("test loss: ", sum_loss / len(LazyLoader.cardio().test_dataset))
+    return sum_loss / len(LazyLoader.cardio().test_dataset)
 
 
 def sup_loss(pred_mes, target_mes):
@@ -66,6 +66,8 @@ def sup_loss(pred_mes, target_mes):
 def l1_loss(pred, target):
     return Loss(nn.L1Loss().forward(pred, target))
 
+def l2_loss(pred, target):
+    return Loss(nn.MSELoss().forward(pred, target))
 
 def send_images_to_tensorboard(writer, data: Tensor, name: str, iter: int, count=8, normalize=True, range=(-1, 1)):
     with torch.no_grad():
@@ -85,15 +87,15 @@ noise_size = 512
 n_mlp = 8
 lr_mlp = 0.01
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 
-W300DatasetLoader.batch_size = batch_size
+Cardio.batch_size = batch_size
 
 
-starting_model_number = 470000
+starting_model_number = 30000
 weights = torch.load(
-    f'{Paths.default.models()}/hm2img_{str(starting_model_number).zfill(6)}.pt',
+    f'{Paths.default.models()}/cardio_{str(starting_model_number).zfill(6)}.pt',
     map_location="cpu"
 )
 
@@ -109,14 +111,13 @@ heatmap2image = HeatmapToImage(
 heatmap2image.load_state_dict(weights['gi'])
 heatmap2image = heatmap2image.cuda()
 
-# heatmapper = ToGaussHeatMap(64, 1)
 heatmapper = ToGaussHeatMap(256, 4)
 skeletoner = CoordToGaussSkeleton(256, 4)
-hg = HG_skeleton(skeletoner)
-hg.load_state_dict(weights['gh'])
+hg = HG_skeleton(skeletoner, num_classes=200)
+# hg.load_state_dict(weights['gh'])
 hg = hg.cuda()
-hm_discriminator = Discriminator(image_size, input_nc=68)
-hm_discriminator.load_state_dict(weights["dh"])
+hm_discriminator = Discriminator(image_size, input_nc=200)
+# hm_discriminator.load_state_dict(weights["dh"])
 hm_discriminator = hm_discriminator.cuda()
 
 gan_model_tuda = StyleGanModel[HeatmapToImage](heatmap2image, StyleGANLoss(discriminator_img), (0.001/4, 0.0015/4))
@@ -128,20 +129,20 @@ style_encoder = style_encoder.cuda()
 decoder = HeatmapAndStyleToImage(heatmap2image)
 style_opt = optim.Adam(style_encoder.parameters(), lr=1e-4)
 
-writer = SummaryWriter(f"{Paths.default.board()}/hm2img{int(time.time())}")
+writer = SummaryWriter(f"{Paths.default.board()}/cardio{int(time.time())}")
 WR.writer = writer
 
 #%%
 
-batch = next(LazyLoader.w300().loader_train_inf)
-test_img = batch["data"].cuda()
-test_landmarks = batch["meta"]["keypts_normalized"].cuda()
+batch = next(LazyLoader.cardio().loader_train_inf)
+test_img = batch["image"].cuda()
+test_landmarks = batch["keypoints"].cuda()
 test_measure = UniformMeasure2D01(torch.clamp(test_landmarks, max=1))
 # test_skeleton = skeletoner.forward(test_measure.coord).sum(1, keepdim=True).detach()
 test_hm = heatmapper.forward(test_measure.coord).sum(1, keepdim=True).detach()
 test_noise = mixing_noise(batch_size, 512, 0.9, device)
 
-psp_loss = PSPLoss().cuda()
+psp_loss = PSPLoss(id_lambda=0).cuda()
 
 image_accumulator = Accumulator(heatmap2image, decay=0.99, write_every=100)
 hm_accumulator = Accumulator(hg, decay=0.99, write_every=100)
@@ -150,10 +151,10 @@ for i in range(100000):
 
     WR.counter.update(i)
 
-    batch = next(LazyLoader.w300().loader_train_inf)
+    batch = next(LazyLoader.cardio().loader_train_inf)
 
-    real_img = batch["data"].cuda()
-    landmarks = batch["meta"]["keypts_normalized"].cuda()
+    real_img = batch["image"].cuda()
+    landmarks = batch["keypoints"].cuda()
     measure = UniformMeasure2D01(torch.clamp(landmarks, max=1))
     # skeleton = skeletoner.forward(measure.coord).sum(1, keepdim=True).detach()
     heatmap = heatmapper.forward(measure.coord).sum(1, keepdim=True).detach()
@@ -177,7 +178,7 @@ for i in range(100000):
     hm_pred = heatmapper.forward(hg.forward(real_img)["mes"].coord)
     hm_ref = heatmapper.forward(measure.coord).detach()
     gan_model_obratno.discriminator_train([hm_ref], [hm_pred.detach()])
-    gan_model_obratno.generator_loss([hm_ref], [hm_pred]).__mul__(coefs["obratno"]).minimize_step(gan_model_obratno.optimizer.opt_min)
+    gan_model_obratno.generator_loss_with_penalty([hm_ref], [hm_pred]).__mul__(coefs["obratno"]).minimize_step(gan_model_obratno.optimizer.opt_min)
 
     fake2, _ = heatmap2image.forward(heatmap, noise)
     pred2 = hg.forward(fake2)
@@ -187,7 +188,7 @@ for i in range(100000):
     sk_pred3 = heatmapper.forward(hg.forward(real_img[:4])["mes"].coord).sum(1, keepdim=True)
     latent = style_encoder.forward(real_img[:4])
     restored = decoder.forward(sk_pred3, latent)
-    WR.writable("cycle2", psp_loss.forward)(real_img[:4], real_img[:4], restored, latent).__mul__(coefs["img"]).minimize_step(
+    WR.writable("cycle2", psp_loss)(real_img[:4], real_img[:4], restored, latent).__mul__(coefs["img"]).minimize_step(
         gan_model_tuda.optimizer.opt_min, gan_model_obratno.optimizer.opt_min, style_opt)
 
     image_accumulator.step(i)
@@ -202,7 +203,7 @@ for i in range(100000):
                 'dh': hm_discriminator.state_dict(),
                 's': style_encoder.state_dict()
             },
-            f'{Paths.default.models()}/hm2img_{str(i + starting_model_number).zfill(6)}.pt',
+            f'{Paths.default.models()}/cardio_{str(i + starting_model_number).zfill(6)}.pt',
         )
 
     if i % 100 == 0:

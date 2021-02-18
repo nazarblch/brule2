@@ -12,9 +12,9 @@ class CardioDataset(Dataset):
         self.path = "/raid/data/ibespalov/CHAZOV_dataset/"
         self.csv = pd.read_csv(csv_path)
         if train:
-            self.csv = self.csv[self.csv["fold"] != 5]
+            self.csv = self.csv[self.csv["fold"] != 4]
         else:
-            self.csv = self.csv[self.csv["fold"] == 5]
+            self.csv = self.csv[self.csv["fold"] == 4]
         self.transform = transform
 
     def __getitem__(self, index):

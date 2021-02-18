@@ -397,19 +397,22 @@ class HG_heatmap(nn.Module):
         self.model = hg2(num_classes=self.num_classes, num_blocks=1)
 
         self.upsample = nn.Sequential(
-            nn.ConvTranspose2d(num_classes, num_classes, 3, stride=2, padding=1),
+            nn.ConvTranspose2d(num_classes, num_classes, 4, stride=2, padding=1),
             nn.BatchNorm2d(num_classes),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.ConvTranspose2d(num_classes, num_classes, 3, stride=2, padding=1)
+            nn.ConvTranspose2d(num_classes, num_classes, 4, stride=2, padding=1)
         )
+
+        self.scale = nn.Parameter(torch.tensor(0.1))
 
 
     def forward(self, image: Tensor):
+        B, C, D, D = image.shape
         heatmaps: List[Tensor] = self.model.forward(image)
         out = heatmaps[-1]
-        out = self.upsample(out)
+        out = self.upsample(out).pow(2)
 
-        return out
+        return (-out * 1000).exp() * self.scale
 
 
 class HGDiscriminator(Discriminator):

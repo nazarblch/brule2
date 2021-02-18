@@ -146,7 +146,8 @@ class Celeba:
 class Cardio:
 
     image_size = 256
-    batch_size = 8
+    batch_size = 4
+    test_batch_size = 4
 
     transforms = albumentations.Compose([
         albumentations.Resize(image_size, image_size),
@@ -167,6 +168,18 @@ class Cardio:
         )
 
         self.loader_train_inf = sample_data(self.loader_train)
+
+        self.test_dataset = CardioDataset(path, train=False, transform=Cardio.transforms)
+
+        print("train:", dataset_train.__len__())
+        print("test:", self.test_dataset.__len__())
+
+        self.test_loader = data.DataLoader(
+            self.test_dataset,
+            batch_size=Cardio.test_batch_size,
+            drop_last=False,
+            num_workers=20
+        )
 
 
 class MAFL:
