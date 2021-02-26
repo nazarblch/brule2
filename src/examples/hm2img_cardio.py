@@ -93,7 +93,7 @@ torch.cuda.set_device(device)
 Cardio.batch_size = batch_size
 
 
-starting_model_number = 30000
+starting_model_number = 110000
 weights = torch.load(
     f'{Paths.default.models()}/cardio_{str(starting_model_number).zfill(6)}.pt',
     map_location="cpu"
@@ -112,16 +112,17 @@ heatmap2image.load_state_dict(weights['gi'])
 heatmap2image = heatmap2image.cuda()
 
 heatmapper = ToGaussHeatMap(256, 4)
+# heatmapper_big = ToGaussHeatMap(256, 10)
 skeletoner = CoordToGaussSkeleton(256, 4)
 hg = HG_skeleton(skeletoner, num_classes=200)
 # hg.load_state_dict(weights['gh'])
 hg = hg.cuda()
-hm_discriminator = Discriminator(image_size, input_nc=200)
+hm_discriminator = Discriminator(image_size, input_nc=201, channel_multiplier=0.5)
 # hm_discriminator.load_state_dict(weights["dh"])
 hm_discriminator = hm_discriminator.cuda()
 
 gan_model_tuda = StyleGanModel[HeatmapToImage](heatmap2image, StyleGANLoss(discriminator_img), (0.001/4, 0.0015/4))
-gan_model_obratno = StyleGanModel[HG_skeleton](hg, StyleGANLoss(hm_discriminator), (1e-5, 0.0015/4))
+gan_model_obratno = StyleGanModel[HG_skeleton](hg, StyleGANLoss(hm_discriminator), (2e-5, 0.0002))
 
 style_encoder = GradualStyleEncoder(50, 3, style_count=14)
 style_encoder.load_state_dict(weights["s"])
@@ -133,6 +134,7 @@ writer = SummaryWriter(f"{Paths.default.board()}/cardio{int(time.time())}")
 WR.writer = writer
 
 #%%
+lm = next(LazyLoader.cardio_landmarks().loader_train_inf)
 
 batch = next(LazyLoader.cardio().loader_train_inf)
 test_img = batch["image"].cuda()
@@ -176,9 +178,11 @@ for i in range(100000):
     #%%
 
     hm_pred = heatmapper.forward(hg.forward(real_img)["mes"].coord)
+    hm_pred = torch.cat([hm_pred, hm_pred.sum(dim=1, keepdim=True)], dim=1)
     hm_ref = heatmapper.forward(measure.coord).detach()
+    hm_ref = torch.cat([hm_ref, hm_ref.sum(dim=1, keepdim=True)], dim=1)
     gan_model_obratno.discriminator_train([hm_ref], [hm_pred.detach()])
-    gan_model_obratno.generator_loss_with_penalty([hm_ref], [hm_pred]).__mul__(coefs["obratno"]).minimize_step(gan_model_obratno.optimizer.opt_min)
+    gan_model_obratno.generator_loss([hm_ref], [hm_pred]).__mul__(coefs["obratno"]).minimize_step(gan_model_obratno.optimizer.opt_min)
 
     fake2, _ = heatmap2image.forward(heatmap, noise)
     pred2 = hg.forward(fake2)

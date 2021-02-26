@@ -7,7 +7,7 @@ from torch.utils import data
 from torch.utils.data import DataLoader
 
 from dataset.cardio_dataset import ImageMeasureDataset, ImageDataset, CelebaWithLandmarks
-from dataset.cardio_keypts import CardioDataset
+from dataset.cardio_keypts import CardioDataset, LandmarksDataset
 from dataset.d300w import ThreeHundredW
 from dataset.MAFL import MAFLDataset
 from albumentations.pytorch.transforms import ToTensorV2 as AlbToTensor, ToTensorV2
@@ -38,12 +38,12 @@ class W300DatasetLoader:
     test_batch_size = 16
 
     def __init__(self):
-        dataset_train = ThreeHundredW(f"{Paths.default.data()}/300w", train=True, imwidth=500, crop=15)
+        self.dataset_train = ThreeHundredW(f"{Paths.default.data()}/300w", train=True, imwidth=500, crop=15)
 
         self.loader_train = data.DataLoader(
-            dataset_train,
+            self.dataset_train,
             batch_size=W300DatasetLoader.batch_size,
-            sampler=data_sampler(dataset_train, shuffle=True, distributed=False),
+            sampler=data_sampler(self.dataset_train, shuffle=True, distributed=False),
             drop_last=True,
             num_workers=20
         )
@@ -60,7 +60,7 @@ class W300DatasetLoader:
         )
 
         print("300 W initialize")
-        print(f"train size: {len(dataset_train)}, test size: {len(self.test_dataset)}")
+        print(f"train size: {len(self.dataset_train)}, test size: {len(self.test_dataset)}")
 
         self.test_loader_inf = sample_data(self.test_loader)
 
@@ -157,12 +157,12 @@ class Cardio:
 
     def __init__(self):
         path = "/raid/data/ibespalov/CHAZOV_dataset/folds4chamb.csv"
-        dataset_train = CardioDataset(path, train=True, transform=Cardio.transforms)
+        self.dataset_train = CardioDataset(path, train=True, transform=Cardio.transforms)
 
         self.loader_train = data.DataLoader(
-            dataset_train,
+            self.dataset_train,
             batch_size=Cardio.batch_size,
-            sampler=data_sampler(dataset_train, shuffle=True, distributed=False),
+            sampler=data_sampler(self.dataset_train, shuffle=True, distributed=False),
             drop_last=True,
             num_workers=20
         )
@@ -171,7 +171,7 @@ class Cardio:
 
         self.test_dataset = CardioDataset(path, train=False, transform=Cardio.transforms)
 
-        print("train:", dataset_train.__len__())
+        print("train:", self.dataset_train.__len__())
         print("test:", self.test_dataset.__len__())
 
         self.test_loader = data.DataLoader(
@@ -180,6 +180,32 @@ class Cardio:
             drop_last=False,
             num_workers=20
         )
+
+
+class CardioLandmarks:
+
+    batch_size = 4
+
+    transforms = albumentations.Compose([
+        ToTensorV2()
+    ])
+
+    def __init__(self):
+        path = "/raid/data/cardio"
+        self.dataset_train = LandmarksDataset(path, transform=CardioLandmarks.transforms)
+
+        self.loader_train = data.DataLoader(
+            self.dataset_train,
+            batch_size=CardioLandmarks.batch_size,
+            sampler=data_sampler(self.dataset_train, shuffle=True, distributed=False),
+            drop_last=True,
+            num_workers=20
+        )
+
+        self.loader_train_inf = sample_data(self.loader_train)
+
+        print("CardioLandmarks")
+        print("train:", self.dataset_train.__len__())
 
 
 class MAFL:
@@ -221,6 +247,7 @@ class LazyLoader:
     celeba_kp_save: Optional[CelebaWithKeyPoints] = None
     celeba_save: Optional[Celeba] = None
     cardio_save: Optional[Cardio] = None
+    cardio_lm_save: Optional[CardioLandmarks] = None
     celebaWithLandmarks: Optional[CelebaWithLandmarks] = None
     mafl_save: Optional[MAFL] = None
 
@@ -254,6 +281,12 @@ class LazyLoader:
         if not LazyLoader.cardio_save:
             LazyLoader.cardio_save = Cardio()
         return LazyLoader.cardio_save
+
+    @staticmethod
+    def cardio_landmarks():
+        if not LazyLoader.cardio_lm_save:
+            LazyLoader.cardio_lm_save = CardioLandmarks()
+        return LazyLoader.cardio_lm_save
 
     @staticmethod
     def celeba_test(batch_size=1):

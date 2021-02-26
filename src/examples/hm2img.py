@@ -3,12 +3,13 @@ import json
 import math
 import sys, os
 
-from gan.loss.perceptual.psp import PSPLoss
-from train_procedure import gan_trainer, content_trainer_with_gan, coord_hm_loss
 
 sys.path.append(os.path.join(sys.path[0], '../'))
 sys.path.append(os.path.join(sys.path[0], '../../gans/'))
 
+
+from gan.loss.perceptual.psp import PSPLoss
+from train_procedure import gan_trainer, content_trainer_with_gan, coord_hm_loss
 from models.hg import HG_skeleton
 
 from wr import WR
@@ -91,7 +92,7 @@ torch.cuda.set_device(device)
 W300DatasetLoader.batch_size = batch_size
 
 
-starting_model_number = 470000
+starting_model_number = 560000
 weights = torch.load(
     f'{Paths.default.models()}/hm2img_{str(starting_model_number).zfill(6)}.pt',
     map_location="cpu"
@@ -115,12 +116,12 @@ skeletoner = CoordToGaussSkeleton(256, 4)
 hg = HG_skeleton(skeletoner)
 hg.load_state_dict(weights['gh'])
 hg = hg.cuda()
-hm_discriminator = Discriminator(image_size, input_nc=68)
-hm_discriminator.load_state_dict(weights["dh"])
+hm_discriminator = Discriminator(image_size, input_nc=68, channel_multiplier=0.5)
+# hm_discriminator.load_state_dict(weights["dh"])
 hm_discriminator = hm_discriminator.cuda()
 
 gan_model_tuda = StyleGanModel[HeatmapToImage](heatmap2image, StyleGANLoss(discriminator_img), (0.001/4, 0.0015/4))
-gan_model_obratno = StyleGanModel[HG_skeleton](hg, StyleGANLoss(hm_discriminator), (1e-5, 0.0015/4))
+gan_model_obratno = StyleGanModel[HG_skeleton](hg, StyleGANLoss(hm_discriminator), (2e-5, 0.0002))
 
 style_encoder = GradualStyleEncoder(50, 3, style_count=14)
 style_encoder.load_state_dict(weights["s"])
