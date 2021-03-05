@@ -6,9 +6,9 @@ from typing import List, Dict
 from collections import defaultdict
 
 
-def threshold(A, eps=0.3):
+def threshold(A: np.ndarray, eps=0.3):
     B = A.copy()
-    B = (B < eps).astype(int)
+    B[B > eps] = 100
     np.fill_diagonal(B, 0)
     return B
 

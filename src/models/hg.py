@@ -390,42 +390,15 @@ class HG_skeleton(nn.Module):
 
 class HG_heatmap(nn.Module):
 
-    def __init__(self, num_classes=68, heatmap_size=64):
+    def __init__(self, heatmapper, num_classes=68, heatmap_size=64):
         super().__init__()
         self.num_classes = num_classes
         self.heatmap_size = heatmap_size
         self.model = hg2(num_classes=self.num_classes, num_blocks=1)
 
-        self.upsample = nn.Sequential(
-            nn.ConvTranspose2d(num_classes, num_classes, 4, stride=2, padding=1),
-            nn.BatchNorm2d(num_classes),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.ConvTranspose2d(num_classes, num_classes, 4, stride=2, padding=1)
-        )
-
-        self.scale = nn.Parameter(torch.tensor(0.1))
-
-
-    def forward(self, image: Tensor):
-        B, C, D, D = image.shape
-        heatmaps: List[Tensor] = self.model.forward(image)
-        out = heatmaps[-1]
-        out = self.upsample(out).pow(2)
-
-        return (-out * 1000).exp() * self.scale
-
-
-class HGDiscriminator(Discriminator):
-
-    def __init__(self, num_classes=68, heatmap_size=64, in_nc=1):
-        super().__init__()
-        self.num_classes = num_classes
-        self.heatmap_size = heatmap_size
-        self.model = hg2(num_classes=self.num_classes, num_blocks=1, in_nc=in_nc)
-
         NormClass = nn.BatchNorm2d
 
-        self.final = nn.Sequential(
+        self.hm_to_coord = nn.Sequential(
             nn.Conv2d(num_classes, num_classes, 4, 2, 1),
             NormClass(num_classes),
             nn.LeakyReLU(0.2, inplace=True),
@@ -440,73 +413,28 @@ class HGDiscriminator(Discriminator):
             nn.LeakyReLU(0.2, inplace=True),
             View(num_classes * 4 * 4),
             nn.Linear(num_classes * 4 * 4, num_classes * 2),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(num_classes * 2, 1),
+            nn.Sigmoid(),
+            View(num_classes, 2)
         )
 
+        self.heatmapper = heatmapper
 
     def forward(self, image: Tensor):
+        B, C, D, D = image.shape
         heatmaps: List[Tensor] = self.model.forward(image)
         out = heatmaps[-1]
 
-        return self.final(out)
+        coords = self.hm_to_coord(out)
+        hm = self.heatmapper.forward(coords)
 
-
-class HG_squeremax2020(nn.Module):
-
-    def __init__(self, num_classes=68, heatmap_size=64):
-        super().__init__()
-        self.num_classes = num_classes
-        self.heatmap_size = heatmap_size
-        self.model = hg2(num_classes=self.num_classes, num_blocks=1)
-
-    def forward(self, image: Tensor):
-        B, C, D, D = image.shape
-        heatmaps: List[Tensor] = self.model.forward(image)
-        squere_value = heatmaps[-1].relu().pow(2)
-        sup = ((squere_value/squere_value.sum(dim=(2,3), keepdim=True).detach()) / self.num_classes)\
-                .view(B, self.num_classes, self.heatmap_size, self.heatmap_size)
+        assert coords.max().item() is not None
+        assert coords.max().item() < 2
 
         return {
-            "out": heatmaps[-1],
-            "softmax":  sup
+            "mes": UniformMeasure2D01(coords),
+            "hm": hm,
+            "hm_sum": hm.sum(dim=1, keepdim=True)
         }
-
-    def return_coords(self, image: Tensor):
-        heatmaps = self.forward(image)
-        coords, p = heatmap_to_measure(heatmaps)
-        return coords
-
-
-class GHSparse(nn.Module):
-
-    def __init__(self, gh: nn.Module):
-        super().__init__()
-        self.gh = gh
-        self.heatmaper = ToGaussHeatMap(64, 1.0)
-
-    def forward(self, image: Tensor):
-
-        img_content = self.gh(image)
-        pred_measures: UniformMeasure2D01 = UniformMeasure2DFactory.from_heatmap(img_content)
-        sparce_hm = self.heatmaper.forward(pred_measures.coord * 63)
-
-        return pred_measures, sparce_hm
-
-
-class InternalHG(nn.Module):
-
-    def __init__(self, hg_model: HG_softmax2020):
-        super().__init__()
-
-        self.model = hg_model
-
-    def forward(self, image: Tensor):
-        B, C, D, D = image.shape
-        heatmaps: List[Tensor] = self.model.model.forward(image)
-
-        return heatmaps[-1], self.model.postproc(heatmaps[-1])
-
 
 
 if __name__ == '__main__':

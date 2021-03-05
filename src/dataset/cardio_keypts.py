@@ -22,7 +22,9 @@ class CardioDataset(Dataset):
         path_to_keypts = self.csv.iloc[index]['keypts']
         img = np.array(Image.open(os.path.join(self.path, path_to_image + ".tiff")))[:, :, 0:3] #
         keypts = np.load(os.path.join(self.path, path_to_keypts + ".npy")) # numpy - [1, 200, 2]
-        keypts = [keypts[0, :, 0], keypts[0, :, 1], 0, 1]
+        keypts = keypts[0]
+        # keypts = keypts[np.lexsort((keypts[:, 0], keypts[:, 1]))]
+        keypts = [keypts[:, 0], keypts[:, 1], 0, 1]
         dict_transforms = self.transform(image=img, keypoints=[keypts])
         image, keypts = dict_transforms["image"], dict_transforms["keypoints"]
 
@@ -63,12 +65,17 @@ class LandmarksDataset(Dataset):
 
     def __getitem__(self, index):
         keypts = np.load(self.data[index]) # numpy - [200, 2]
+        # keypts = keypts[np.lexsort((keypts[:, 0], keypts[:, 1]))]
         keypts = [keypts[:, 0], keypts[:, 1], 0, 1]
         dict_transforms = self.transform(image=np.zeros((256, 256, 3)), keypoints=[keypts])
         keypts = dict_transforms["keypoints"]
         kp_x, kp_y = keypts[0][0], keypts[0][1]
-        keypts_new = torch.cat([torch.tensor(kp_x)[..., None], torch.tensor(kp_y)[..., None]], dim=1)
-        return {"keypoints": keypts_new} #torch.tensor - [200, 2]
+        keypts_new = torch.cat([
+            torch.tensor(kp_x, dtype=torch.float32)[..., None],
+            torch.tensor(kp_y, dtype=torch.float32)[..., None]],
+            dim=1
+        )
+        return keypts_new  #torch.tensor - [200, 2]
 
     def __len__(self):
         return len(self.data)

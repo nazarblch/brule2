@@ -1,8 +1,16 @@
+import multiprocessing
 import sys, os
 
 import torch
+from tqdm import tqdm
 
 from barycenters.simplex import MaxCliq, CliqSampler
+from gan.loss.hinge import HingeLoss
+from gan.loss.vanilla import DCGANLoss
+from gan.loss.wasserstein import WassersteinLoss
+from gan.nn.stylegan.components import EqualLinear, EqualConv2d
+from nn.common.view import View
+from stylegan2_bk.model import EqualConv2d
 
 sys.path.append(os.path.join(sys.path[0], '/home/nazar/PycharmProjects/brule2/src/'))
 
@@ -18,7 +26,7 @@ import ot
 from barycenters.sampler import Uniform2DBarycenterSampler
 from parameters.path import Paths
 from joblib import Parallel, delayed
-
+from torch import nn
 
 
 N = 300
@@ -55,13 +63,13 @@ ls_mes = viz_mes(ls2)
 def compute_w2(l1, l2):
 
     M_ij = ot.dist(l1, l2)
-    D_ij = ot.emd2(prob, prob, M_ij)
+    D_ij = ot.emd2(prob, prob, M_ij, processes=10)
     return D_ij
 
-bc_sampler = Uniform2DBarycenterSampler(padding, dir_alpha=0.4)
+bc_sampler = Uniform2DBarycenterSampler(padding, dir_alpha=1.0)
 
-parameter_a = np.arange(0.05, 0.15, 0.01)
-parameter_b = range(3, 15, 1)
+parameter_a = np.arange(0.07, 0.11, 0.01)
+parameter_b = range(6, 12, 1)
 
 
 def juja(a, b):
@@ -77,10 +85,13 @@ def juja(a, b):
 
     bc_samples = list(Parallel(n_jobs=30)(delayed(juja_inside)(sample) for sample in cl_samples))
 
-    bc_mes = viz_mes(bc_samples)
-    ent = kl(ls_mes, bc_mes) + kl(bc_mes, ls_mes)
+    # bc_mes = viz_mes(bc_samples)
+    # ent = kl(ls_mes, bc_mes) + kl(bc_mes, ls_mes)
 
-    return ent
+    disc_loss = parameters_wloss(np.asarray(bc_samples), ls2)
+    print(disc_loss)
+
+    return disc_loss
 
 
 def kl(p, q):
@@ -96,6 +107,32 @@ def kl(p, q):
     return np.sum(np.where(p != 0, p * np.log(p / q), 0))
 
 
+
+
+
+def sample_data(arr: np.ndarray, batch_size: int):
+    while True:
+        for i in range(0, arr.shape[0] - batch_size, batch_size):
+            yield torch.cat([
+                torch.from_numpy(arr[i + j]).type(torch.float32)[None, ] for j in range(batch_size)
+            ]).cuda()
+
+
+def parameters_wloss(ldmrks1, ldmrks2):
+
+    D = np.zeros((N, N))
+    prob_d = np.ones(N) / (N)
+
+    for i in tqdm(range(N)):
+        # print(i)
+        D[i, :] = np.array(Parallel(n_jobs=multiprocessing.cpu_count())(
+            delayed(compute_w2)(ldmrks1[i], ldmrks2[j]) for j in range(0, N)
+        ))
+
+    return ot.emd2(prob_d, prob_d, D)
+
+
+
 best = 10000
 
 for a in parameter_a:
@@ -109,10 +146,3 @@ for a in parameter_a:
         print("a: {}, b: {}, res: {}".format(a, b, res))
 
     print(a, suma)
-
-
-
-# ent = kl(ls_mes, bc_mes) + kl(bc_mes, ls_mes)
-#
-# print(ent)
-#

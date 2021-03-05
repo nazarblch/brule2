@@ -191,12 +191,38 @@ class CardioLandmarks:
     ])
 
     def __init__(self):
-        path = "/raid/data/cardio"
+        path = "/raid/data/cardio/lm"
         self.dataset_train = LandmarksDataset(path, transform=CardioLandmarks.transforms)
 
         self.loader_train = data.DataLoader(
             self.dataset_train,
             batch_size=CardioLandmarks.batch_size,
+            sampler=data_sampler(self.dataset_train, shuffle=True, distributed=False),
+            drop_last=True,
+            num_workers=20
+        )
+
+        self.loader_train_inf = sample_data(self.loader_train)
+
+        print("CardioLandmarks")
+        print("train:", self.dataset_train.__len__())
+
+
+class W300Landmarks:
+
+    batch_size = 4
+
+    transforms = albumentations.Compose([
+        ToTensorV2()
+    ])
+
+    def __init__(self, N = 3148):
+        path = f"{Paths.default.data()}/w300_bc_{N}"
+        self.dataset_train = LandmarksDataset(path, transform=W300Landmarks.transforms)
+
+        self.loader_train = data.DataLoader(
+            self.dataset_train,
+            batch_size=W300Landmarks.batch_size,
             sampler=data_sampler(self.dataset_train, shuffle=True, distributed=False),
             drop_last=True,
             num_workers=20
@@ -248,6 +274,7 @@ class LazyLoader:
     celeba_save: Optional[Celeba] = None
     cardio_save: Optional[Cardio] = None
     cardio_lm_save: Optional[CardioLandmarks] = None
+    w300_lm_save: Optional[CardioLandmarks] = None
     celebaWithLandmarks: Optional[CelebaWithLandmarks] = None
     mafl_save: Optional[MAFL] = None
 
@@ -286,7 +313,13 @@ class LazyLoader:
     def cardio_landmarks():
         if not LazyLoader.cardio_lm_save:
             LazyLoader.cardio_lm_save = CardioLandmarks()
-        return LazyLoader.cardio_lm_save
+        return LazyLoader.cardio_lm_save\
+
+    @staticmethod
+    def w300_landmarks(n: int):
+        if not LazyLoader.w300_lm_save:
+            LazyLoader.w300_lm_save = W300Landmarks(n)
+        return LazyLoader.w300_lm_save
 
     @staticmethod
     def celeba_test(batch_size=1):

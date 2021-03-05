@@ -15,12 +15,12 @@ from dataset.probmeasure import UniformMeasure2D01
 import pandas as pd
 import networkx as nx
 import ot
-from barycenters.sampler import Uniform2DBarycenterSampler
+from barycenters.sampler import Uniform2DBarycenterSampler, Uniform2DAverageSampler
 from parameters.path import Paths
 from joblib import Parallel, delayed
 
 
-N = 600
+N = 100
 dataset = LazyLoader.w300().dataset_train
 D = np.load(f"{Paths.default.models()}/w300graph{N}.npy")
 padding = 68
@@ -39,7 +39,7 @@ def viz_mes(ms):
 
     kapusta = torch.zeros(128, 128)
     for m in ms:
-        keyptsiki = torch.from_numpy(m)[None,]
+        keyptsiki = torch.from_numpy(m)[None,].clamp(0, 1)
         tmp = heatmaper.forward(keyptsiki)
         kapusta += tmp.sum(axis=(0, 1))
 
@@ -50,13 +50,15 @@ def viz_mes(ms):
 
 ls_mes = viz_mes(ls)
 
-bc_sampler = Uniform2DBarycenterSampler(padding, dir_alpha=0.4)
+bc_sampler = Uniform2DBarycenterSampler(padding, dir_alpha=1.0)
+# bc_sampler = Uniform2DAverageSampler(padding, dir_alpha=1.0)
 
 def juja(a, b):
 
     def juja_inside(sample):
         landmarks = [ls[i] for i in sample]
         B, Bws = bc_sampler.sample(landmarks)
+        print(sample)
         return B
 
     cliques, K = MaxCliq(a, b).forward(D)
@@ -84,12 +86,12 @@ def kl(p, q):
     return np.sum(np.where(p != 0, p * np.log(p / q), 0))
 
 
-ent, bcs = juja(a=0.09, b=8)
+ent, bcs = juja(a=0.09, b=7)
 print(ent)
 
-os.mkdir(f"{Paths.default.data()}/w300_bc_{N}")
-os.mkdir(f"{Paths.default.data()}/w300_bc_{N}/lmbc")
-os.mkdir(f"{Paths.default.data()}/w300_bc_{N}/lm")
+# os.mkdir(f"{Paths.default.data()}/w300_bc_{N}_avg")
+# os.mkdir(f"{Paths.default.data()}/w300_bc_{N}_avg/lmbc")
+# os.mkdir(f"{Paths.default.data()}/w300_bc_{N}_avg/lm")
 
 for i,b in enumerate(bcs):
     np.save(f"{Paths.default.data()}/w300_bc_{N}/lmbc/{i}.npy", b)
