@@ -132,10 +132,10 @@ test_hm = heatmapper.forward(test_landmarks).detach()
 test_noise = mixing_noise(batch_size, 512, 0.9, device)
 
 psp_loss = PSPLoss(id_lambda=0, lpips_lambda=0).cuda()
-mes_loss = MesBceL2Loss(heatmapper, bce_coef=1000000/2, l2_coef=2000)
+mes_loss = MesBceL2Loss(heatmapper, bce_coef=1000000/5, l2_coef=2000)
 
-image_accumulator = Accumulator(enc_dec.generator, decay=0.9, write_every=100)
-hm_accumulator = Accumulator(hg, decay=0.95, write_every=100)
+image_accumulator = Accumulator(enc_dec.generator, decay=0.95, write_every=100)
+hm_accumulator = Accumulator(hg, decay=0.97, write_every=100)
 
 
 for i in range(100000):
