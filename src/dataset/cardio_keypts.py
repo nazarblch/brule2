@@ -5,6 +5,8 @@ import os
 import numpy as np
 import pandas as pd
 
+from dataset.toheatmap import ToGaussHeatMap, heatmap_to_measure
+
 
 class CardioDataset(Dataset):
     def __init__(self, csv_path, train=True, transform=None):
@@ -76,6 +78,29 @@ class LandmarksDataset(Dataset):
             dim=1
         )
         return keypts_new  #torch.tensor - [200, 2]
+
+    def __len__(self):
+        return len(self.data)
+
+
+class LandmarksDatasetAugment(Dataset):
+    def __init__(self, path: str, transform=None):
+        super().__init__()
+        self.path = path
+        self.transform = transform
+        self.data = make_dataset(path)
+        self.heatmapper = ToGaussHeatMap(256, 1)
+
+    def __getitem__(self, index):
+        keypts = np.load(self.data[index]) # numpy - [200, 2]
+        hm = self.heatmapper.forward(torch.tensor(keypts)[None,])[0]
+        transformed = self.transform(
+            image=np.zeros_like(np.array(hm.permute(1, 2, 0))),
+            mask=np.array(hm.permute(1, 2, 0))
+        )
+        mask = transformed["mask"]
+        coord, p = heatmap_to_measure(mask.permute(2, 0, 1)[None])
+        return coord[0].type(torch.float32)  #torch.tensor - [200, 2]
 
     def __len__(self):
         return len(self.data)

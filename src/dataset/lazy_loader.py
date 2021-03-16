@@ -1,19 +1,19 @@
-from typing import Optional
+from typing import Optional, Type, Callable, Dict
 
 import albumentations
 import torch
 from torch import nn, Tensor
 from torch.utils import data
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 from dataset.cardio_dataset import ImageMeasureDataset, ImageDataset, CelebaWithLandmarks
-from dataset.cardio_keypts import CardioDataset, LandmarksDataset
+from dataset.cardio_keypts import CardioDataset, LandmarksDataset, LandmarksDatasetAugment
 from dataset.d300w import ThreeHundredW
 from dataset.MAFL import MAFLDataset
 from albumentations.pytorch.transforms import ToTensorV2 as AlbToTensor, ToTensorV2
 
+from dataset.hum36 import SimpleHuman36mDataset
 from parameters.path import Paths
-
 
 
 def data_sampler(dataset, shuffle, distributed):
@@ -31,6 +31,12 @@ def sample_data(loader):
     while True:
         for batch in loader:
             yield batch
+
+
+
+class AbstractLoader:
+    pass
+
 
 class W300DatasetLoader:
 
@@ -184,14 +190,14 @@ class Cardio:
 
 class CardioLandmarks:
 
-    batch_size = 4
+    batch_size = 8
 
     transforms = albumentations.Compose([
         ToTensorV2()
     ])
 
     def __init__(self):
-        path = "/raid/data/cardio/lm"
+        path = "/raid/data/cardio"
         self.dataset_train = LandmarksDataset(path, transform=CardioLandmarks.transforms)
 
         self.loader_train = data.DataLoader(
@@ -216,8 +222,8 @@ class W300Landmarks:
         ToTensorV2()
     ])
 
-    def __init__(self, N = 3148):
-        path = f"{Paths.default.data()}/w300_bc_{N}"
+    def __init__(self, sub_path: str):
+        path = f"{Paths.default.data()}/{sub_path}"
         self.dataset_train = LandmarksDataset(path, transform=W300Landmarks.transforms)
 
         self.loader_train = data.DataLoader(
@@ -230,7 +236,35 @@ class W300Landmarks:
 
         self.loader_train_inf = sample_data(self.loader_train)
 
-        print("CardioLandmarks")
+        print("W300Landmarks")
+        print("train:", self.dataset_train.__len__())
+
+
+class W300LandmarksAugment:
+
+    batch_size = 4
+
+    transforms = albumentations.Compose([
+        albumentations.HorizontalFlip(p=0.5),
+        albumentations.ShiftScaleRotate(shift_limit=0, rotate_limit=15, p=0.3),
+        ToTensorV2()
+    ])
+
+    def __init__(self, sub_path: str):
+        path = f"{Paths.default.data()}/{sub_path}"
+        self.dataset_train = LandmarksDatasetAugment(path, transform=W300LandmarksAugment.transforms)
+
+        self.loader_train = data.DataLoader(
+            self.dataset_train,
+            batch_size=W300LandmarksAugment.batch_size,
+            sampler=data_sampler(self.dataset_train, shuffle=True, distributed=False),
+            drop_last=True,
+            num_workers=20
+        )
+
+        self.loader_train_inf = sample_data(self.loader_train)
+
+        print("W300LandmarksAugment")
         print("train:", self.dataset_train.__len__())
 
 
@@ -267,17 +301,58 @@ class MAFL:
         self.test_loader_inf = sample_data(self.test_loader)
 
 
+class HumanLoader:
+
+    batch_size = 8
+    test_batch_size = 16
+
+    def __init__(self):
+
+        self.dataset_train = SimpleHuman36mDataset()
+        self.dataset_train.initialize(f"{Paths.default.data()}/human_images")
+
+        self.loader_train = data.DataLoader(
+            self.dataset_train,
+            batch_size=HumanLoader.batch_size,
+            sampler=data_sampler(self.dataset_train, shuffle=True, distributed=False),
+            drop_last=True,
+            num_workers=20
+        )
+
+        self.loader_train_inf = sample_data(self.loader_train)
+
+        self.test_dataset = SimpleHuman36mDataset()
+        self.test_dataset.initialize(f"{Paths.default.data()}/human_images", subset="test")
+
+        print("train:", self.dataset_train.__len__())
+        print("test:", self.test_dataset.__len__())
+
+        self.test_loader = data.DataLoader(
+            self.test_dataset,
+            batch_size= HumanLoader.test_batch_size,
+            drop_last=False,
+            num_workers=20
+        )
+
+
 class LazyLoader:
+
+    saved = {}
 
     w300_save: Optional[W300DatasetLoader] = None
     celeba_kp_save: Optional[CelebaWithKeyPoints] = None
     celeba_save: Optional[Celeba] = None
     cardio_save: Optional[Cardio] = None
     cardio_lm_save: Optional[CardioLandmarks] = None
-    w300_lm_save: Optional[CardioLandmarks] = None
+    w300_lm_save: Optional[W300Landmarks] = None
+    w300_lm_augment_save: Optional[W300LandmarksAugment] = None
     celebaWithLandmarks: Optional[CelebaWithLandmarks] = None
     mafl_save: Optional[MAFL] = None
+    human_save: Optional[HumanLoader] = None
 
+    @staticmethod
+    def register_loader(cls: Type[AbstractLoader]):
+        LazyLoader.saved[cls.__name__] = None
 
     @staticmethod
     def w300() -> W300DatasetLoader:
@@ -313,13 +388,19 @@ class LazyLoader:
     def cardio_landmarks():
         if not LazyLoader.cardio_lm_save:
             LazyLoader.cardio_lm_save = CardioLandmarks()
-        return LazyLoader.cardio_lm_save\
+        return LazyLoader.cardio_lm_save
 
     @staticmethod
-    def w300_landmarks(n: int):
+    def w300_landmarks(path: str):
         if not LazyLoader.w300_lm_save:
-            LazyLoader.w300_lm_save = W300Landmarks(n)
+            LazyLoader.w300_lm_save = W300Landmarks(path)
         return LazyLoader.w300_lm_save
+
+    @staticmethod
+    def w300augment_landmarks(path: str):
+        if not LazyLoader.w300_lm_augment_save:
+            LazyLoader.w300_lm_augment_save = W300LandmarksAugment(path)
+        return LazyLoader.w300_lm_augment_save
 
     @staticmethod
     def celeba_test(batch_size=1):
@@ -327,5 +408,12 @@ class LazyLoader:
             LazyLoader.celebaWithLandmarks = sample_data(DataLoader(
                 CelebaWithLandmarks(),
                 batch_size=batch_size,
-                drop_last=True))
+                drop_last=False))
         return LazyLoader.celebaWithLandmarks
+
+
+    @staticmethod
+    def human36():
+        if not LazyLoader.human_save:
+            LazyLoader.human_save = HumanLoader()
+        return LazyLoader.human_save

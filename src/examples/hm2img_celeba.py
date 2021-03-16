@@ -54,6 +54,13 @@ from gan.noise.stylegan import mixing_noise
 from optim.accumulator import Accumulator
 from parameters.path import Paths
 
+def trans_w300(landmarks):
+    landmarks = landmarks.clone()
+    landmarks[:, :, 1] += 0.22
+    landmarks[:, :, 1] /= 1.2577
+
+    return landmarks
+
 
 manualSeed = 72
 random.seed(manualSeed)
@@ -82,6 +89,7 @@ device = torch.device(f"cuda:{args.cuda}" if torch.cuda.is_available() else "cpu
 torch.cuda.set_device(device)
 W300DatasetLoader.batch_size = batch_size
 W300Landmarks.batch_size = batch_size
+Celeba.batch_size = batch_size
 
 g_transforms = albumentations.Compose([
         ToNumpy(),
@@ -120,8 +128,9 @@ style_opt = optim.Adam(enc_dec.style_encoder.parameters(), lr=1e-5)
 writer = SummaryWriter(f"{Paths.default.board()}/hm2img{int(time.time())}")
 WR.writer = writer
 
-test_img = next(LazyLoader.w300().loader_train_inf)["data"].cuda()
+test_img = next(LazyLoader.celeba().loader).cuda()
 test_landmarks = torch.clamp(next(LazyLoader.w300_landmarks(args.data_path).loader_train_inf).cuda(), max=1)
+test_landmarks = trans_w300(test_landmarks)
 test_hm = heatmapper.forward(test_landmarks).sum(1, keepdim=True).detach()
 test_noise = mixing_noise(batch_size, 512, 0.9, device)
 
@@ -136,9 +145,9 @@ for i in range(100000):
 
     WR.counter.update(i)
 
-    # real_img = next(LazyLoader.celeba().loader).cuda()
-    real_img = next(LazyLoader.w300().loader_train_inf)["data"].cuda()
+    real_img = next(LazyLoader.celeba().loader).cuda()
     landmarks = torch.clamp(next(LazyLoader.w300_landmarks(args.data_path).loader_train_inf).cuda(), max=1)
+    landmarks = trans_w300(landmarks)
     heatmap_sum = heatmapper.forward(landmarks).sum(1, keepdim=True).detach()
 
     coefs = json.load(open(os.path.join(sys.path[0], "../parameters/cycle_loss.json")))

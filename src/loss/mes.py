@@ -1,11 +1,11 @@
 from gan.loss.loss_base import Loss
 from loss.weighted_was import OTWasLoss
-from torch import nn
+from torch import nn, Tensor
 
 
 class MesBceL2Loss(nn.Module):
 
-    def __init__(self, heatmapper, bce_coef: float = 1000000, l2_coef: float = 20000):
+    def __init__(self, heatmapper, bce_coef: float = 1000000, l2_coef: float = 2000):
         super().__init__()
         self.heatmapper = heatmapper
         self.bce_coef = bce_coef
@@ -15,12 +15,13 @@ class MesBceL2Loss(nn.Module):
         pred_hm = self.heatmapper.forward(pred_mes.coord)
         target_hm = self.heatmapper.forward(target_mes.coord)
 
-        pred_hm = pred_hm / (pred_hm.sum(dim=[1, 2, 3], keepdim=True).detach() + 1e-8)
-        target_hm = target_hm / target_hm.sum(dim=[1, 2, 3], keepdim=True).detach()
+        pred_hm: Tensor = pred_hm / (pred_hm.sum(dim=[1, 2, 3], keepdim=True).detach() + 1e-8)
+        target_hm: Tensor = target_hm / target_hm.sum(dim=[1, 2, 3], keepdim=True).detach()
 
         return Loss(
-            nn.BCELoss()(pred_hm, target_hm) * self.bce_coef +
-            nn.MSELoss()(pred_mes.coord, target_mes.coord) * self.l2_coef
+            nn.BCELoss()(pred_hm, target_hm) * self.bce_coef * pred_hm.shape[1] +
+            (pred_mes.coord - target_mes.coord).pow(2).sum(dim=2).sqrt().mean() * self.l2_coef
+            # nn.MSELoss()(pred_mes.coord, target_mes.coord) * self.l2_coef
         )
 
 

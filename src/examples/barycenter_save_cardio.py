@@ -19,17 +19,20 @@ from barycenters.sampler import Uniform2DBarycenterSampler, Uniform2DAverageSamp
 from parameters.path import Paths
 from joblib import Parallel, delayed
 
-
-N = 100
-dataset = LazyLoader.w300().dataset_train
-D = np.load(f"{Paths.default.models()}/w300graph{N}.npy")
-padding = 68
+N = 701
+dataset = LazyLoader.cardio().dataset_train
+D = np.load(f"{Paths.default.models()}/cardio_graph{N}.npy")
+padding = 200
 prob = np.ones(padding) / padding
 NS = 7000
 
+print(D.reshape(-1).mean())
+plt.hist(D.reshape(-1), bins=30)
+plt.show()
+
 
 def LS(k):
-    return dataset[k]["meta"]['keypts_normalized'].numpy()
+    return dataset[k]['keypoints'].numpy()
 
 
 ls = np.asarray([LS(k) for k in range(N)])
@@ -86,7 +89,7 @@ def kl(p, q):
     return np.sum(np.where(p != 0, p * np.log(p / q), 0))
 
 
-ent, bcs = juja(a=0.20, b=4)
+ent, bcs = juja(a=0.20, b=6)
 print(ent)
 
 # os.mkdir(f"{Paths.default.data()}/w300_bc_{N}_avg")
@@ -94,10 +97,10 @@ print(ent)
 # os.mkdir(f"{Paths.default.data()}/w300_bc_{N}_avg/lm")
 
 for i,b in enumerate(bcs):
-    np.save(f"{Paths.default.data()}/w300_bc_{N}/lmbc/{i}.npy", b)
+    np.save(f"{Paths.default.data()}/cardio/lmbc/{i}.npy", b)
 
 for i,b in enumerate(ls):
-    np.save(f"{Paths.default.data()}/w300_bc_{N}/lm/{i}.npy", b)
+    np.save(f"{Paths.default.data()}/cardio/lm/{i}.npy", b)
 
 # ent = kl(ls_mes, bc_mes) + kl(bc_mes, ls_mes)
 #

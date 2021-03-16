@@ -6,9 +6,9 @@ from typing import List, Dict
 from collections import defaultdict
 
 
-def threshold(A: np.ndarray, eps=0.3):
+def threshold(A, eps1=0.0, eps2=0.3):
     B = A.copy()
-    B[B > eps] = 100
+    B = (B < eps2).astype(int) * (B > eps1).astype(int)
     np.fill_diagonal(B, 0)
     return B
 
@@ -22,15 +22,18 @@ def knn(A, k=5):
 
 class MaxCliq:
 
-    def __init__(self, threshold_b=0.1, nn=10):
+    def __init__(self, threshold_b=0.1, nn=10, threshold_l=0.0):
         self.threshold_b = threshold_b
         self.nn = nn
+        self.threshold_l = threshold_l
 
     def forward(self, matrix: np.ndarray):
         assert matrix.shape.__len__() == 2
         assert matrix.shape[0] == matrix.shape[1]
-        K = threshold(matrix, self.threshold_b)
-        K = knn(K, self.nn)
+        # K = threshold(matrix, self.threshold_b)
+        K = knn(matrix, self.nn)
+        K1 = threshold(matrix, self.threshold_l, self.threshold_b)
+        K = K * K1
         G = nx.from_numpy_array(K)
         min_clique, max_clique = 2, 20
         cliques = nx.find_cliques(G)

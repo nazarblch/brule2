@@ -390,7 +390,7 @@ class HG_skeleton(nn.Module):
 
 class HG_heatmap(nn.Module):
 
-    def __init__(self, heatmapper, num_classes=68, heatmap_size=64):
+    def __init__(self, heatmapper, num_classes=68, heatmap_size=64, image_size=256):
         super().__init__()
         self.num_classes = num_classes
         self.heatmap_size = heatmap_size
@@ -398,24 +398,24 @@ class HG_heatmap(nn.Module):
 
         NormClass = nn.BatchNorm2d
 
-        self.hm_to_coord = nn.Sequential(
-            nn.Conv2d(num_classes, num_classes, 4, 2, 1),
-            NormClass(num_classes),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(num_classes, num_classes, 4, 2, 1),
-            NormClass(num_classes),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(num_classes, num_classes, 4, 2, 1),
-            NormClass(num_classes),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(num_classes, num_classes, 4, 2, 1),
-            NormClass(num_classes),
-            nn.LeakyReLU(0.2, inplace=True),
+        self.hm_to_coord = []
+
+        num_convs = int(math.log(image_size // 4, 2)) - 2
+        for _ in range(num_convs):
+            self.hm_to_coord += [
+                nn.Conv2d(num_classes, num_classes, 4, 2, 1),
+                NormClass(num_classes),
+                nn.LeakyReLU(0.2, inplace=True),
+            ]
+
+        self.hm_to_coord += [
             View(num_classes * 4 * 4),
             nn.Linear(num_classes * 4 * 4, num_classes * 2),
             nn.Sigmoid(),
             View(num_classes, 2)
-        )
+        ]
+
+        self.hm_to_coord = nn.Sequential(*self.hm_to_coord)
 
         self.heatmapper = heatmapper
 

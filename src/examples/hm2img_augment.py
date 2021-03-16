@@ -3,13 +3,13 @@ import argparse
 import json
 import math
 import sys, os
-
-sys.path.append(os.path.join(sys.path[0], '../'))
-sys.path.append(os.path.join(sys.path[0], '../../gans/'))
-
 from argparse import ArgumentParser
 
 import albumentations
+
+
+sys.path.append(os.path.join(sys.path[0], '../'))
+sys.path.append(os.path.join(sys.path[0], '../../gans/'))
 
 from dataset.transforms import ToNumpy, NumpyBatch, ToTensor
 
@@ -43,7 +43,7 @@ import torch.utils.data
 from torch import Tensor, nn
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
-from dataset.lazy_loader import LazyLoader, Celeba, W300DatasetLoader, W300Landmarks
+from dataset.lazy_loader import LazyLoader, Celeba, W300DatasetLoader, W300Landmarks, W300LandmarksAugment
 from dataset.probmeasure import UniformMeasure2D01
 from gan.loss.stylegan import StyleGANLoss
 from gan.models.stylegan import StyleGanModel, CondStyleGanModel
@@ -65,7 +65,6 @@ noise_size = 512
 n_mlp = 8
 lr_mlp = 0.01
 
-
 parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     parents=[
@@ -81,7 +80,13 @@ for k in vars(args):
 device = torch.device(f"cuda:{args.cuda}" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
 W300DatasetLoader.batch_size = batch_size
-W300Landmarks.batch_size = batch_size
+W300LandmarksAugment.batch_size = batch_size
+
+starting_model_number = 560000 + args.weights
+weights = torch.load(
+    f'{Paths.default.models()}/hm2img_{str(starting_model_number).zfill(6)}.pt',
+    map_location="cpu"
+)
 
 g_transforms = albumentations.Compose([
         ToNumpy(),
@@ -91,12 +96,6 @@ g_transforms = albumentations.Compose([
         ])),
         ToTensor(device),
     ])
-
-starting_model_number = 560000 + args.weights
-weights = torch.load(
-    f'{Paths.default.models()}/hm2img_{str(starting_model_number).zfill(6)}.pt',
-    map_location="cpu"
-)
 
 enc_dec = StyleGanAutoEncoder().load_state_dict(weights).cuda()
 
@@ -112,7 +111,7 @@ hm_discriminator = Discriminator(image_size, input_nc=1, channel_multiplier=1)
 hm_discriminator.load_state_dict(weights["dh"])
 hm_discriminator = hm_discriminator.cuda()
 
-gan_model_tuda = StyleGanModel[HeatmapToImage](enc_dec.generator, StyleGANLoss(discriminator_img), (0.001/4, 0.0015/4))
+gan_model_tuda = StyleGanModel[HeatmapToImage](enc_dec.generator, StyleGANLoss(discriminator_img), (0.001, 0.0015))
 gan_model_obratno = StyleGanModel[HG_skeleton](hg, StyleGANLoss(hm_discriminator), (2e-5, 0.0015/4))
 
 style_opt = optim.Adam(enc_dec.style_encoder.parameters(), lr=1e-5)
@@ -121,7 +120,7 @@ writer = SummaryWriter(f"{Paths.default.board()}/hm2img{int(time.time())}")
 WR.writer = writer
 
 test_img = next(LazyLoader.w300().loader_train_inf)["data"].cuda()
-test_landmarks = torch.clamp(next(LazyLoader.w300_landmarks(args.data_path).loader_train_inf).cuda(), max=1)
+test_landmarks = torch.clamp(next(LazyLoader.w300augment_landmarks(args.data_path).loader_train_inf).cuda(), max=1)
 test_hm = heatmapper.forward(test_landmarks).sum(1, keepdim=True).detach()
 test_noise = mixing_noise(batch_size, 512, 0.9, device)
 
@@ -138,7 +137,7 @@ for i in range(100000):
 
     # real_img = next(LazyLoader.celeba().loader).cuda()
     real_img = next(LazyLoader.w300().loader_train_inf)["data"].cuda()
-    landmarks = torch.clamp(next(LazyLoader.w300_landmarks(args.data_path).loader_train_inf).cuda(), max=1)
+    landmarks = torch.clamp(next(LazyLoader.w300augment_landmarks(args.data_path).loader_train_inf).cuda(), max=1)
     heatmap_sum = heatmapper.forward(landmarks).sum(1, keepdim=True).detach()
 
     coefs = json.load(open(os.path.join(sys.path[0], "../parameters/cycle_loss.json")))

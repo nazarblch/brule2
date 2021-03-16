@@ -3,6 +3,8 @@ import sys, os
 import torch
 
 from barycenters.simplex import MaxCliq, CliqSampler
+from dataset.hum36 import SimpleHuman36mDataset
+from parameters.dataset import DatasetParameters
 
 sys.path.append(os.path.join(sys.path[0], '/home/nazar/PycharmProjects/brule2/src/'))
 
@@ -19,17 +21,27 @@ from barycenters.sampler import Uniform2DBarycenterSampler, Uniform2DAverageSamp
 from parameters.path import Paths
 from joblib import Parallel, delayed
 
-
-N = 100
-dataset = LazyLoader.w300().dataset_train
-D = np.load(f"{Paths.default.models()}/w300graph{N}.npy")
-padding = 68
+N = 13410
+D = np.load(f"{Paths.default.models()}/hum36_graph{N}.npy")
+padding = 32
 prob = np.ones(padding) / padding
-NS = 7000
+NS = 13000
+
+print(D.reshape(-1).mean())
+plt.hist(D.reshape(-1), bins=30)
+plt.show()
+
+parser = DatasetParameters()
+args = parser.parse_args()
+for k in vars(args):
+    print(f"{k}: {vars(args)[k]}")
+
+data = SimpleHuman36mDataset()
+data.initialize(args)
 
 
 def LS(k):
-    return dataset[k]["meta"]['keypts_normalized'].numpy()
+    return data[k]["paired_B"].numpy()
 
 
 ls = np.asarray([LS(k) for k in range(N)])
@@ -51,15 +63,38 @@ def viz_mes(ms):
 ls_mes = viz_mes(ls)
 
 bc_sampler = Uniform2DBarycenterSampler(padding, dir_alpha=1.0)
-# bc_sampler = Uniform2DAverageSampler(padding, dir_alpha=1.0)
+bc_sampler_2 = Uniform2DAverageSampler(padding, dir_alpha=1.0)
+
+def compute_w2(li, lj):
+    M_ij = ot.dist(li, lj)
+    D_ij = ot.emd2(prob, prob, M_ij)
+    return D_ij
+
+def draw_lm(lm1, lm2):
+    heatmaper = ToGaussHeatMap(128, 1)
+    keyptsiki = torch.from_numpy(lm1)[None,]
+    tmp1 = heatmaper.forward(keyptsiki).type(torch.float32).sum(1, keepdim=True)
+    lm2[:, 0] += 0.1
+    keyptsiki = torch.from_numpy(lm2)[None,]
+    tmp2 = heatmaper.forward(keyptsiki).type(torch.float32).sum(1, keepdim=True)
+    tmp = torch.cat([tmp1, tmp2, torch.zeros_like(tmp2)], dim=1)
+    plt.imshow(tmp[0].permute(1, 2, 0).numpy())
+    plt.show()
 
 def juja(a, b):
 
     def juja_inside(sample):
         landmarks = [ls[i] for i in sample]
-        B, Bws = bc_sampler.sample(landmarks)
-        print(sample)
-        return B
+        cmp = 10
+        B2 = None
+        while cmp > 0.0001:
+            B, Bws = bc_sampler.sample(landmarks)
+            B2, _ = bc_sampler_2.sample(landmarks, Bws)
+            cmp = compute_w2(B, B2)
+
+        print(Bws)
+        # draw_lm(B, B2)
+        return B2
 
     cliques, K = MaxCliq(a, b).forward(D)
     cl_sampler = CliqSampler(cliques)
@@ -86,20 +121,22 @@ def kl(p, q):
     return np.sum(np.where(p != 0, p * np.log(p / q), 0))
 
 
-ent, bcs = juja(a=0.20, b=4)
+ent, bcs = juja(a=0.2, b=4)
 print(ent)
 
-# os.mkdir(f"{Paths.default.data()}/w300_bc_{N}_avg")
-# os.mkdir(f"{Paths.default.data()}/w300_bc_{N}_avg/lmbc")
-# os.mkdir(f"{Paths.default.data()}/w300_bc_{N}_avg/lm")
+heatmaper = ToGaussHeatMap(128, 1)
+keyptsiki = torch.from_numpy(bcs[1])[None,].clamp(0, 1)
+tmp = heatmaper.forward(keyptsiki)
+plt.imshow(tmp.sum((0, 1)).numpy())
+plt.show()
+
+# os.mkdir(f"{Paths.default.data()}/human_part_{N}")
+# os.mkdir(f"{Paths.default.data()}/human_part_{N}/lmbc")
+# os.mkdir(f"{Paths.default.data()}/human_part_{N}/lm")
 
 for i,b in enumerate(bcs):
-    np.save(f"{Paths.default.data()}/w300_bc_{N}/lmbc/{i}.npy", b)
+    np.save(f"{Paths.default.data()}/human_part_{N}/lmbc/{i}.npy", b)
 
 for i,b in enumerate(ls):
-    np.save(f"{Paths.default.data()}/w300_bc_{N}/lm/{i}.npy", b)
+    np.save(f"{Paths.default.data()}/human_part_{N}/lm/{i}.npy", b)
 
-# ent = kl(ls_mes, bc_mes) + kl(bc_mes, ls_mes)
-#
-# print(ent)
-#

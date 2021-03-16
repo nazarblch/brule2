@@ -29,7 +29,7 @@ class Uniform2DBarycenterSampler:
             self.X,
             self.prob,
             weights=weights,
-            numItermax=100
+            numItermax=300
         ), weights
 
     def mean(self, measures: List[np.ndarray]) -> np.ndarray:
@@ -49,9 +49,10 @@ class Uniform2DAverageSampler:
         self.X = np.random.uniform(size=(size, 2))
         self.dir_alpha = dir_alpha
 
-    def sample(self, measures: List[np.ndarray]) -> (np.ndarray, np.ndarray):
+    def sample(self, measures: List[np.ndarray], weights=None) -> (np.ndarray, np.ndarray):
 
-        weights = np.random.dirichlet([self.dir_alpha] * len(measures))
+        if weights is None:
+            weights = np.random.dirichlet([self.dir_alpha] * len(measures))
 
         return reduce(lambda x, y: x+y, [measures[i] * weights[i] for i in range(len(measures))]), weights
 
@@ -59,13 +60,13 @@ class Uniform2DAverageSampler:
 class ImageBarycenterSampler:
 
     def __init__(self, lm_count, dir_alpha = 1):
-        starting_model_number = 560000 + 10000
+        starting_model_number = 560000 + 50000 + 90000 + 30000
         weights = torch.load(
-            f'{Paths.default.models()}/300w_encoder_{str(starting_model_number).zfill(6)}.pt',
+            f'{Paths.default.models()}/hm2img_{str(starting_model_number).zfill(6)}.pt',
             map_location="cpu"
         )
 
-        self.enc_dec = StyleGanAutoEncoder(weights)
+        self.enc_dec = StyleGanAutoEncoder(weights, load_style=True)
 
         self.dir_alpha = dir_alpha
         self.mes_sampler = Uniform2DBarycenterSampler(lm_count, dir_alpha)

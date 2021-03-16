@@ -51,8 +51,8 @@ def viz_mes(ms):
         tmp = heatmaper.forward(keyptsiki)
         kapusta += tmp.sum(axis=(0, 1))
 
-    plt.imshow(kapusta)
-    plt.show()
+    # plt.imshow(kapusta)
+    # plt.show()
 
     return kapusta / kapusta.sum()
 
@@ -68,8 +68,8 @@ def compute_w2(l1, l2):
 
 bc_sampler = Uniform2DBarycenterSampler(padding, dir_alpha=1.0)
 
-parameter_a = np.arange(0.07, 0.11, 0.01)
-parameter_b = range(6, 12, 1)
+parameter_a = np.arange(0.15, 0.25, 0.01)
+parameter_b = range(3, 8, 1)
 
 
 def juja(a, b):
@@ -79,7 +79,7 @@ def juja(a, b):
         B, Bws = bc_sampler.sample(landmarks)
         return B
 
-    cliques, K = MaxCliq(a, b).forward(D)
+    cliques, K = MaxCliq(a, b, 0.03).forward(D)
     cl_sampler = CliqSampler(cliques)
     cl_samples = cl_sampler.sample(2 * N)
 
@@ -87,6 +87,8 @@ def juja(a, b):
 
     # bc_mes = viz_mes(bc_samples)
     # ent = kl(ls_mes, bc_mes) + kl(bc_mes, ls_mes)
+    #
+    # return ent
 
     disc_loss = parameters_wloss(np.asarray(bc_samples), ls2)
     print(disc_loss)

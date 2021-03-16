@@ -123,6 +123,9 @@ class CelebaWithLandmarks(Dataset):
         dict_transfors = self.img_transform(image=image)
         image = dict_transfors['image']
         landmarks = np.load(os.path.join(self.landmarks_path + '/', self.img_names[index] +'.npy'))
+        # landmarks[0, :, 1] -= 0.20
+        # landmarks[0, :, 1] *= 1.3
+
         return image, torch.from_numpy(landmarks[0])
 
     def __len__(self):
