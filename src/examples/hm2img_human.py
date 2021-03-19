@@ -8,6 +8,7 @@ sys.path.append(os.path.join(sys.path[0], '../'))
 sys.path.append(os.path.join(sys.path[0], '../../gans/'))
 
 from argparse import ArgumentParser
+from parameters.gan import CycleGanParameters
 
 import albumentations
 
@@ -20,11 +21,9 @@ from models.autoencoder import StyleGanAutoEncoder
 from loss.l1 import l1_loss
 from loss.mes import MesBceWasLoss, MesBceL2Loss
 from metrics.board import send_images_to_tensorboard
-
 from loss.weighted_was import OTWasLoss
 from metrics.landmarks import verka_300w, verka_300w_w2, verka_human
 from gan.loss.perceptual.psp import PSPLoss
-from train_procedure import gan_trainer, content_trainer_with_gan, coord_hm_loss
 from models.hg import HG_skeleton, HG_heatmap
 
 from wr import WR
@@ -72,7 +71,8 @@ parser = argparse.ArgumentParser(
     parents=[
         DatasetParameters(),
         RuntimeParameters(),
-        ModelParameters()
+        ModelParameters(),
+        CycleGanParameters(),
     ]
 )
 args = parser.parse_args()
@@ -103,6 +103,12 @@ weights = torch.load(
     map_location="cpu"
 )
 
+# weights_sup = torch.load(
+#     f'{Paths.default.models()}/human_sup_{str(30000).zfill(6)}.pt',
+#     map_location="cpu"
+# )
+
+
 enc_dec = StyleGanAutoEncoder(hm_nc=measure_size, image_size=image_size).load_state_dict(weights).cuda()
 
 discriminator_img = Discriminator(image_size)
@@ -110,15 +116,15 @@ discriminator_img.load_state_dict(weights['di'])
 discriminator_img = discriminator_img.cuda()
 
 heatmapper = ToGaussHeatMap(image_size, 2)
-hg = HG_heatmap(heatmapper, num_classes=measure_size, image_size=image_size)
+hg = HG_heatmap(heatmapper, num_classes=measure_size, image_size=image_size, num_blocks=4)
 hg.load_state_dict(weights['gh'])
 hg = hg.cuda()
 hm_discriminator = Discriminator(image_size, input_nc=measure_size, channel_multiplier=1)
 hm_discriminator.load_state_dict(weights["dh"])
 hm_discriminator = hm_discriminator.cuda()
 
-gan_model_tuda = StyleGanModel[HeatmapToImage](enc_dec.generator, StyleGANLoss(discriminator_img), (0.002, 0.003))
-gan_model_obratno = StyleGanModel[HG_skeleton](hg, StyleGANLoss(hm_discriminator), (4e-5, 0.0015/4))
+gan_model_tuda = StyleGanModel[HeatmapToImage](enc_dec.generator, StyleGANLoss(discriminator_img), (0.001/4, 0.0015/4))
+gan_model_obratno = StyleGanModel[HG_skeleton](hg, StyleGANLoss(hm_discriminator), (2e-5, 0.0015/4))
 
 style_opt = optim.Adam(enc_dec.style_encoder.parameters(), lr=1e-5)
 
@@ -127,15 +133,15 @@ WR.writer = writer
 
 batch = next(LazyLoader.human36().loader_train_inf)
 test_img = batch["A"].cuda()
-test_landmarks = torch.clamp(batch["paired_B"].cuda(), max=1)
+test_landmarks = torch.clamp(next(LazyLoader.human_landmarks(args.data_path).loader_train_inf).cuda(), max=1)
 test_hm = heatmapper.forward(test_landmarks).detach()
 test_noise = mixing_noise(batch_size, 512, 0.9, device)
 
-psp_loss = PSPLoss(id_lambda=0, lpips_lambda=0).cuda()
-mes_loss = MesBceL2Loss(heatmapper, bce_coef=1000000/5, l2_coef=2000)
+psp_loss = PSPLoss(id_lambda=0).cuda()
+mes_loss = MesBceL2Loss(heatmapper, bce_coef=10000/2, l2_coef=100)
 
-image_accumulator = Accumulator(enc_dec.generator, decay=0.95, write_every=100)
-hm_accumulator = Accumulator(hg, decay=0.97, write_every=100)
+image_accumulator = Accumulator(enc_dec.generator, decay=0.99, write_every=100)
+hm_accumulator = Accumulator(hg, decay=0.99, write_every=100)
 
 
 for i in range(100000):
@@ -145,10 +151,10 @@ for i in range(100000):
     batch = next(LazyLoader.human36().loader_train_inf)
     real_img = batch["A"].cuda()
     cond_img = batch["cond_A"].cuda()
-    landmarks = torch.clamp(batch["paired_B"].cuda(), max=1)
+    landmarks = torch.clamp(next(LazyLoader.human_landmarks(args.data_path).loader_train_inf).cuda(), max=1)
     heatmap = heatmapper.forward(landmarks).detach()
 
-    coefs = json.load(open(os.path.join(sys.path[0], "../parameters/cycle_loss.json")))
+    # coefs = json.load(open(os.path.join(sys.path[0], "../parameters/cycle_loss.json")))
 
     fake, fake_latent = enc_dec.generate(heatmap)
     fake_latent_pred = enc_dec.encode_latent(fake)
@@ -156,22 +162,22 @@ for i in range(100000):
     gan_model_tuda.discriminator_train([real_img], [fake.detach()])
     (
         gan_model_tuda.generator_loss([real_img], [fake]) +
-        l1_loss(fake_latent_pred, fake_latent) * coefs["style"]
+        l1_loss(fake_latent_pred, fake_latent) * args.style
     ).minimize_step(gan_model_tuda.optimizer.opt_min, style_opt)
 
     hm_pred = hg.forward(real_img)["hm"]
     hm_ref = heatmapper.forward(landmarks).detach()
     gan_model_obratno.discriminator_train([hm_ref], [hm_pred.detach()])
-    gan_model_obratno.generator_loss([hm_ref], [hm_pred]).__mul__(coefs["obratno"])\
+    gan_model_obratno.generator_loss([hm_ref], [hm_pred]).__mul__(args.obratno)\
         .minimize_step(gan_model_obratno.optimizer.opt_min)
 
     fake2, _ = enc_dec.generate(heatmap)
-    WR.writable("cycle", mes_loss.forward)(hg.forward(fake2)["mes"], UniformMeasure2D01(landmarks)).__mul__(coefs["hm"])\
+    WR.writable("cycle", mes_loss.forward)(hg.forward(fake2)["mes"], UniformMeasure2D01(landmarks)).__mul__(args.hm)\
         .minimize_step(gan_model_tuda.optimizer.opt_min, gan_model_obratno.optimizer.opt_min)
 
     latent = enc_dec.encode_latent(cond_img)
     restored = enc_dec.decode(hg.forward(real_img)["hm"], latent)
-    WR.writable("cycle2", psp_loss.forward)(real_img, real_img, restored, latent).__mul__(coefs["img"])\
+    WR.writable("cycle2", psp_loss.forward)(real_img, real_img, restored, latent).__mul__(args.img)\
         .minimize_step(gan_model_tuda.optimizer.opt_min, gan_model_obratno.optimizer.opt_min, style_opt)
 
     image_accumulator.step(i)

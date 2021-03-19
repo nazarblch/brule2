@@ -240,6 +240,32 @@ class W300Landmarks:
         print("train:", self.dataset_train.__len__())
 
 
+class HumanLandmarks:
+
+    batch_size = 8
+
+    transforms = albumentations.Compose([
+        ToTensorV2()
+    ])
+
+    def __init__(self, sub_path: str):
+        path = f"{Paths.default.data()}/{sub_path}"
+        self.dataset_train = LandmarksDataset(path, transform=HumanLandmarks.transforms)
+
+        self.loader_train = data.DataLoader(
+            self.dataset_train,
+            batch_size=HumanLandmarks.batch_size,
+            sampler=data_sampler(self.dataset_train, shuffle=True, distributed=False),
+            drop_last=True,
+            num_workers=20
+        )
+
+        self.loader_train_inf = sample_data(self.loader_train)
+
+        print("HumanLandmarks")
+        print("train:", self.dataset_train.__len__())
+
+
 class W300LandmarksAugment:
 
     batch_size = 4
@@ -306,10 +332,10 @@ class HumanLoader:
     batch_size = 8
     test_batch_size = 16
 
-    def __init__(self):
+    def __init__(self, use_mask=False):
 
         self.dataset_train = SimpleHuman36mDataset()
-        self.dataset_train.initialize(f"{Paths.default.data()}/human_images")
+        self.dataset_train.initialize(f"{Paths.default.data()}/human_images", use_mask=use_mask)
 
         self.loader_train = data.DataLoader(
             self.dataset_train,
@@ -322,7 +348,7 @@ class HumanLoader:
         self.loader_train_inf = sample_data(self.loader_train)
 
         self.test_dataset = SimpleHuman36mDataset()
-        self.test_dataset.initialize(f"{Paths.default.data()}/human_images", subset="test")
+        self.test_dataset.initialize(f"{Paths.default.data()}/human_images", subset="test", use_mask=use_mask)
 
         print("train:", self.dataset_train.__len__())
         print("test:", self.test_dataset.__len__())
@@ -349,6 +375,7 @@ class LazyLoader:
     celebaWithLandmarks: Optional[CelebaWithLandmarks] = None
     mafl_save: Optional[MAFL] = None
     human_save: Optional[HumanLoader] = None
+    human_lm_save: Optional[HumanLandmarks] = None
 
     @staticmethod
     def register_loader(cls: Type[AbstractLoader]):
@@ -397,6 +424,12 @@ class LazyLoader:
         return LazyLoader.w300_lm_save
 
     @staticmethod
+    def human_landmarks(path: str):
+        if not LazyLoader.human_lm_save:
+            LazyLoader.human_lm_save = HumanLandmarks(path)
+        return LazyLoader.human_lm_save
+
+    @staticmethod
     def w300augment_landmarks(path: str):
         if not LazyLoader.w300_lm_augment_save:
             LazyLoader.w300_lm_augment_save = W300LandmarksAugment(path)
@@ -413,7 +446,7 @@ class LazyLoader:
 
 
     @staticmethod
-    def human36():
+    def human36(use_mask=False):
         if not LazyLoader.human_save:
-            LazyLoader.human_save = HumanLoader()
+            LazyLoader.human_save = HumanLoader(use_mask=use_mask)
         return LazyLoader.human_save

@@ -1,0 +1,9 @@
+/usr/local/bin/python3.6 -u /home/nazar/PycharmProjects/brule2/src/examples/hm2img_human.py --cuda=1 --weights=120000 --data_path=human_part_13410 --img=250 --hm=0.5 --obratno=2 --style=10
+/usr/local/bin/python3.6 -u /home/nazar/PycharmProjects/brule2/src/examples/hm2img_human.py --cuda=1 --weights=120000 --data_path=human_part_13410 --img=150 --hm=0.5 --obratno=2 --style=10
+/usr/local/bin/python3.6 -u /home/nazar/PycharmProjects/brule2/src/examples/hm2img_human.py --cuda=1 --weights=120000 --data_path=human_part_13410 --img=350 --hm=0.5 --obratno=2 --style=10
+/usr/local/bin/python3.6 -u /home/nazar/PycharmProjects/brule2/src/examples/hm2img_human.py --cuda=1 --weights=120000 --data_path=human_part_13410 --img=250 --hm=0.2 --obratno=2 --style=10
+/usr/local/bin/python3.6 -u /home/nazar/PycharmProjects/brule2/src/examples/hm2img_human.py --cuda=1 --weights=120000 --data_path=human_part_13410 --img=250 --hm=1.0 --obratno=2 --style=10
+/usr/local/bin/python3.6 -u /home/nazar/PycharmProjects/brule2/src/examples/hm2img_human.py --cuda=1 --weights=120000 --data_path=human_part_13410 --img=250 --hm=0.5 --obratno=1 --style=10
+/usr/local/bin/python3.6 -u /home/nazar/PycharmProjects/brule2/src/examples/hm2img_human.py --cuda=1 --weights=120000 --data_path=human_part_13410 --img=250 --hm=0.5 --obratno=3 --style=10
+/usr/local/bin/python3.6 -u /home/nazar/PycharmProjects/brule2/src/examples/hm2img_human.py --cuda=1 --weights=120000 --data_path=human_part_13410 --img=250 --hm=0.5 --obratno=2 --style=5
+/usr/local/bin/python3.6 -u /home/nazar/PycharmProjects/brule2/src/examples/hm2img_human.py --cuda=1 --weights=120000 --data_path=human_part_13410 --img=250 --hm=0.5 --obratno=2 --style=20

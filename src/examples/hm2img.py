@@ -24,7 +24,6 @@ from metrics.board import send_images_to_tensorboard
 from loss.weighted_was import OTWasLoss
 from metrics.landmarks import verka_300w, verka_300w_w2
 from gan.loss.perceptual.psp import PSPLoss
-from train_procedure import gan_trainer, content_trainer_with_gan, coord_hm_loss
 from models.hg import HG_skeleton, HG_heatmap
 
 from wr import WR
@@ -59,7 +58,7 @@ manualSeed = 72
 random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 
-batch_size = 8
+batch_size = 4
 image_size = 256
 noise_size = 512
 n_mlp = 8
@@ -105,8 +104,8 @@ discriminator_img.load_state_dict(weights['di'])
 discriminator_img = discriminator_img.cuda()
 
 heatmapper = ToGaussHeatMap(256, 4)
-hg = HG_heatmap(heatmapper)
-hg.load_state_dict(weights['gh'])
+hg = HG_heatmap(heatmapper, num_blocks=4)
+# hg.load_state_dict(weights['gh'])
 hg = hg.cuda()
 hm_discriminator = Discriminator(image_size, input_nc=1, channel_multiplier=1)
 hm_discriminator.load_state_dict(weights["dh"])
@@ -126,7 +125,7 @@ test_hm = heatmapper.forward(test_landmarks).sum(1, keepdim=True).detach()
 test_noise = mixing_noise(batch_size, 512, 0.9, device)
 
 psp_loss = PSPLoss().cuda()
-mes_loss = MesBceWasLoss(heatmapper, bce_coef=1000000, was_coef=2000)
+mes_loss = MesBceWasLoss(heatmapper, bce_coef=100000, was_coef=2000)
 
 image_accumulator = Accumulator(enc_dec.generator, decay=0.99, write_every=100)
 hm_accumulator = Accumulator(hg, decay=0.99, write_every=100)

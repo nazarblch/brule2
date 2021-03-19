@@ -3,7 +3,6 @@ import os.path
 import torch
 from PIL import Image
 import torchvision.transforms as transforms
-import matplotlib.pyplot as plt
 import skimage.io
 import skimage.transform
 import random
@@ -127,20 +126,13 @@ class SimpleHuman36mDatasetSingle(object):
 
 class SimpleHuman36mDataset(Dataset):
 
-    @staticmethod
-    def modify_commandline_options(parser, is_train):
-        parser.add_argument('--sample_window', type=int, default=[5, 30], nargs=2, help='')
-        parser.add_argument('--no_mask', action='store_true', help='')
-        parser.add_argument('--skeleton_subset_size', type=int, default=0, help='')
-        parser.add_argument('--skeleton_subset_seed', type=int, default=None, help='')
-        return parser
 
-    def initialize(self, data_path, subset='train', sample_window=[5, 30], skeleton_subset_size=0, skeleton_subset_seed=None, output_nc=3):
+    def initialize(self, data_path, subset='train', sample_window=[5, 30], skeleton_subset_size=0, skeleton_subset_seed=None, output_nc=3, use_mask = False):
 
         self.load_images = True
         self.root = data_path
 
-        self.use_mask = False
+        self.use_mask = use_mask
         self.fineSize = 128
 
         activities = ['directions', 'discussion', 'greeting', 'posing',

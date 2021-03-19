@@ -1,3 +1,5 @@
+from torch import nn
+
 from dataset.lazy_loader import LazyLoader
 from loss.weighted_was import OTWasDist
 

@@ -37,7 +37,7 @@ for k in vars(args):
     print(f"{k}: {vars(args)[k]}")
 
 data = SimpleHuman36mDataset()
-data.initialize(args)
+data.initialize(args.data_path)
 
 
 def LS(k):
@@ -121,7 +121,7 @@ def kl(p, q):
     return np.sum(np.where(p != 0, p * np.log(p / q), 0))
 
 
-ent, bcs = juja(a=0.2, b=4)
+ent, bcs = juja(a=0.26, b=6)
 print(ent)
 
 heatmaper = ToGaussHeatMap(128, 1)

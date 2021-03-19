@@ -289,14 +289,14 @@ def hg2(pretrained=False, progress=True, num_blocks=1, num_classes=16, in_nc=3):
                num_classes=num_classes, in_nc=in_nc)
 
 
-def hg4(pretrained=False, progress=True, num_blocks=1, num_classes=16):
+def hg4(pretrained=False, progress=True, num_blocks=1, num_classes=16, in_nc=3):
     return _hg('hg4', pretrained, progress, num_stacks=4, num_blocks=num_blocks,
-               num_classes=num_classes)
+               num_classes=num_classes, in_nc=in_nc)
 
 
-def hg8(pretrained=False, progress=True, num_blocks=1, num_classes=16):
+def hg8(pretrained=False, progress=True, num_blocks=1, num_classes=16, in_nc=3):
     return _hg('hg8', pretrained, progress, num_stacks=8, num_blocks=num_blocks,
-               num_classes=num_classes)
+               num_classes=num_classes, in_nc=in_nc)
 
 
 class HG_softmax2020(nn.Module):
@@ -390,11 +390,11 @@ class HG_skeleton(nn.Module):
 
 class HG_heatmap(nn.Module):
 
-    def __init__(self, heatmapper, num_classes=68, heatmap_size=64, image_size=256):
+    def __init__(self, heatmapper, num_classes=68, heatmap_size=64, image_size=256, num_blocks=1):
         super().__init__()
         self.num_classes = num_classes
         self.heatmap_size = heatmap_size
-        self.model = hg2(num_classes=self.num_classes, num_blocks=1)
+        self.model = hg2(num_classes=self.num_classes, num_blocks=num_blocks)
 
         NormClass = nn.BatchNorm2d
 
