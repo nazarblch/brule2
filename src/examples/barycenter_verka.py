@@ -3,6 +3,7 @@ import sys, os
 import torch
 
 from barycenters.simplex import MaxCliq, CliqSampler
+from models.autoencoder import StyleGanAutoEncoder
 
 sys.path.append(os.path.join(sys.path[0], '/home/nazar/PycharmProjects/brule2/src/'))
 from torchvision.utils import make_grid
@@ -21,28 +22,48 @@ from joblib import Parallel, delayed
 
 
 N = 100
-dataset = LazyLoader.w300().dataset_train
-D = np.load(f"{Paths.default.models()}/w300graph{N}.npy")
-padding = 68
+dataset = LazyLoader.human36().dataset_train
+D = np.load(f"{Paths.default.models()}/hum36_graph{N}.npy")
+padding = 32
 prob = np.ones(padding) / padding
-NS = 7000
+NS = 1000
+
+starting_model_number = 90000 + 130000
+weights = torch.load(
+    f'{Paths.default.models()}/human_{str(starting_model_number).zfill(6)}.pt',
+    map_location="cpu"
+)
+
+
+enc_dec = StyleGanAutoEncoder(hm_nc=32, image_size=128).load_state_dict(weights).cuda()
+heatmapper = ToGaussHeatMap(128, 2)
+test_landmarks = torch.clamp(next(LazyLoader.human_landmarks("human_part_13410").loader_train_inf).cuda(), max=1)
+test_hm = heatmapper.forward(test_landmarks).detach()
+
+fake, _ = enc_dec.generate(test_hm)
+
+grid = make_grid(
+    fake, nrow=4, padding=2, pad_value=0, normalize=True, range=(-1, 1),
+    scale_each=False)
+
+plt.imshow(grid.permute(1, 2, 0).detach().cpu().numpy())
+plt.show()
 
 
 def LS(k):
-    return dataset[k]["meta"]['keypts_normalized'].numpy()
+    return dataset[k]["paired_B"].numpy()
 
 ls = []
 images = []
 
 for k in range(N):
     dk = dataset[k]
-    ls.append(dk["meta"]['keypts_normalized'].numpy())
-    images.append(dk["data"])
+    ls.append(dk["paired_B"].numpy())
+    images.append(dk["A"])
 
 
 # bc_sampler = Uniform2DBarycenterSampler(padding, dir_alpha=1.0)
-bc_sampler = ImageBarycenterSampler(padding, dir_alpha=4.0)
-heatmapper = ToGaussHeatMap(256, 2)
+bc_sampler = ImageBarycenterSampler(padding, dir_alpha=0.01)
 
 # [51, 52, 85, 86]
 # [1, 44, 34, 94, 10, 72]
@@ -77,7 +98,7 @@ def add_bc(sample):
 
     data.append((hm)[None,])
 
-add_bc([34, 94, 10])
+add_bc([34])
 add_bc([7, 17, 65])
 add_bc([54, 48, 37])
 add_bc([66, 67, 78])

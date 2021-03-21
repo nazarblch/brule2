@@ -306,14 +306,20 @@ class HG_softmax2020(nn.Module):
         self.num_classes = num_classes
         self.heatmap_size = heatmap_size
         self.model = hg2(num_classes=self.num_classes, num_blocks=1)
+        self.up = nn.Upsample(size=256)
 
     def forward(self, image: Tensor):
         B, C, D, D = image.shape
         heatmaps: List[Tensor] = self.model.forward(image)
         out = heatmaps[-1]
 
+        hm = self.up(self.postproc(out))
+        coords, _ = heatmap_to_measure(hm)
+
         return {
             "out": out,
+            "mes": UniformMeasure2D01(coords),
+            'hm': hm,
             "softmax": self.postproc(out)
         }
 

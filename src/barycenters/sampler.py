@@ -60,17 +60,17 @@ class Uniform2DAverageSampler:
 class ImageBarycenterSampler:
 
     def __init__(self, lm_count, dir_alpha = 1):
-        starting_model_number = 560000 + 50000 + 90000 + 30000
+        starting_model_number = 90000 + 130000
         weights = torch.load(
-            f'{Paths.default.models()}/hm2img_{str(starting_model_number).zfill(6)}.pt',
+            f'{Paths.default.models()}/human_{str(starting_model_number).zfill(6)}.pt',
             map_location="cpu"
         )
 
-        self.enc_dec = StyleGanAutoEncoder(weights, load_style=True)
+        self.enc_dec = StyleGanAutoEncoder(hm_nc=32, image_size=128).load_state_dict(weights).cuda()
 
         self.dir_alpha = dir_alpha
         self.mes_sampler = Uniform2DBarycenterSampler(lm_count, dir_alpha)
-        self.heatmapper = ToGaussHeatMap(256, 4)
+        self.heatmapper = ToGaussHeatMap(128, 2)
 
     def sample(self, measures: List[np.ndarray], images: torch.Tensor) -> (np.ndarray, torch.Tensor, np.ndarray):
         bc_mes, weights = self.mes_sampler.sample(measures)
@@ -80,6 +80,6 @@ class ImageBarycenterSampler:
                    [(latents[i] * weights[i]).type(torch.float32) for i in range(len(measures))]
                    )[None,]
             bc_mes_cuda = torch.from_numpy(bc_mes).cuda().type(torch.float32)[None, ]
-            hm = self.heatmapper.forward(bc_mes_cuda).sum(1, keepdim=True)
+            hm = self.heatmapper.forward(bc_mes_cuda)
 
             return bc_mes, self.enc_dec.decode(hm, bc_latent)[0].cpu(), weights
