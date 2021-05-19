@@ -20,7 +20,7 @@ from parameters.run import RuntimeParameters
 from models.autoencoder import StyleGanAutoEncoder
 from loss.l1 import l1_loss
 from loss.mes import MesBceWasLoss, MesBceL2Loss
-from metrics.board import send_images_to_tensorboard
+from metrics.board import send_images_to_tensorboard, plot_img_with_lm
 from loss.weighted_was import OTWasLoss
 from metrics.landmarks import verka_300w, verka_300w_w2, verka_human
 from gan.loss.perceptual.psp import PSPLoss
@@ -97,7 +97,7 @@ g_transforms = albumentations.Compose([
         ToTensor(device),
     ])
 
-starting_model_number = 90000 + args.weights
+starting_model_number = 90000 + 210000
 weights = torch.load(
     f'{Paths.default.models()}/human_{str(starting_model_number).zfill(6)}.pt',
     map_location="cpu"
@@ -142,6 +142,13 @@ mes_loss = MesBceL2Loss(heatmapper, bce_coef=10000/2, l2_coef=100)
 
 image_accumulator = Accumulator(enc_dec.generator, decay=0.99, write_every=100)
 hm_accumulator = Accumulator(hg, decay=0.99, write_every=100)
+
+
+fake, _ = enc_dec.generate(test_hm, test_noise)
+plt_img = torch.cat([test_img[:3], fake[:3]]).detach().cpu()
+plt_img = nn.Upsample(256)(plt_img)
+plt_lm = torch.cat([hg.forward(test_img)["mes"].coord[:3], test_landmarks[:3]]).detach().cpu()
+plot_img_with_lm(plt_img, plt_lm, nrows=2, ncols=3)
 
 
 for i in range(100000):

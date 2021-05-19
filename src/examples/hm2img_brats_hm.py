@@ -3,13 +3,15 @@ import argparse
 import json
 import math
 import sys, os
-from argparse import ArgumentParser
-
-import albumentations
 
 
 sys.path.append(os.path.join(sys.path[0], '../'))
 sys.path.append(os.path.join(sys.path[0], '../../gans/'))
+
+from argparse import ArgumentParser
+from dataset.cfinder import ContFinder
+from metrics.segm import verka_segm_cont
+import albumentations
 
 from dataset.transforms import ToNumpy, NumpyBatch, ToTensor
 
@@ -24,7 +26,6 @@ from metrics.board import send_images_to_tensorboard
 from loss.weighted_was import OTWasLoss
 from metrics.landmarks import verka_300w, verka_300w_w2
 from gan.loss.perceptual.psp import PSPLoss
-from train_procedure import gan_trainer, content_trainer_with_gan, coord_hm_loss
 from models.hg import HG_skeleton, HG_heatmap
 
 from wr import WR
@@ -36,14 +37,14 @@ import random
 from gan.loss.loss_base import Loss
 import numpy as np
 import time
-from dataset.toheatmap import ToGaussHeatMap, CoordToGaussSkeleton
+from dataset.toheatmap import ToGaussHeatMap, CoordToGaussSkeleton, heatmap_to_measure
 
 from typing import List
 import torch.utils.data
 from torch import Tensor, nn
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
-from dataset.lazy_loader import LazyLoader, Celeba, W300DatasetLoader, W300Landmarks, W300LandmarksAugment
+from dataset.lazy_loader import LazyLoader, Celeba, W300DatasetLoader, W300Landmarks, BraTSLoader
 from dataset.probmeasure import UniformMeasure2D01
 from gan.loss.stylegan import StyleGANLoss
 from gan.models.stylegan import StyleGanModel, CondStyleGanModel
@@ -59,11 +60,12 @@ manualSeed = 72
 random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 
-batch_size = 8
+batch_size = 4
 image_size = 256
 noise_size = 512
 n_mlp = 8
 lr_mlp = 0.01
+
 
 parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -79,14 +81,7 @@ for k in vars(args):
 
 device = torch.device(f"cuda:{args.cuda}" if torch.cuda.is_available() else "cpu")
 torch.cuda.set_device(device)
-W300DatasetLoader.batch_size = batch_size
-W300LandmarksAugment.batch_size = batch_size
-
-starting_model_number = 560000 + 90000 + 60000
-weights = torch.load(
-    f'{Paths.default.models()}/hm2img_{str(starting_model_number).zfill(6)}.pt',
-    map_location="cpu"
-)
+BraTSLoader.batch_size = batch_size
 
 g_transforms = albumentations.Compose([
         ToNumpy(),
@@ -97,6 +92,12 @@ g_transforms = albumentations.Compose([
         ToTensor(device),
     ])
 
+starting_model_number = 20000 + 90000 + 60000 + 10000
+weights = torch.load(
+    f'{Paths.default.models()}/brats_hm_{str(starting_model_number).zfill(6)}.pt',
+    map_location="cpu"
+)
+
 enc_dec = StyleGanAutoEncoder().load_state_dict(weights).cuda()
 
 discriminator_img = Discriminator(image_size)
@@ -104,11 +105,11 @@ discriminator_img.load_state_dict(weights['di'])
 discriminator_img = discriminator_img.cuda()
 
 heatmapper = ToGaussHeatMap(256, 4)
-hg = HG_heatmap(heatmapper)
-hg.load_state_dict(weights['gh'])
+hg = HG_heatmap(heatmapper, num_blocks=4, num_classes=200)
+# hg.load_state_dict(weights['gh'])
 hg = hg.cuda()
 hm_discriminator = Discriminator(image_size, input_nc=1, channel_multiplier=1)
-hm_discriminator.load_state_dict(weights["dh"])
+# hm_discriminator.load_state_dict(weights["dh"])
 hm_discriminator = hm_discriminator.cuda()
 
 gan_model_tuda = StyleGanModel[HeatmapToImage](enc_dec.generator, StyleGANLoss(discriminator_img), (0.001/4, 0.0015/4))
@@ -116,15 +117,19 @@ gan_model_obratno = StyleGanModel[HG_skeleton](hg, StyleGANLoss(hm_discriminator
 
 style_opt = optim.Adam(enc_dec.style_encoder.parameters(), lr=1e-5)
 
-writer = SummaryWriter(f"{Paths.default.board()}/hm2img{int(time.time())}")
+writer = SummaryWriter(f"{Paths.default.board()}/brats_hm_{int(time.time())}")
 WR.writer = writer
 
-test_img = next(LazyLoader.w300().loader_train_inf)["data"].cuda()
-test_landmarks = torch.clamp(next(LazyLoader.w300augment_landmarks(args.data_path).loader_train_inf).cuda(), max=1)
+brats_data = BraTSLoader()
+loader = brats_data.loader_train_inf
+batch = next(loader)
+test_img = batch[0].cuda()
+test_seg = batch[1].cuda()
+test_landmarks = ContFinder.get_conturs_batch(test_seg).coord
 test_hm = heatmapper.forward(test_landmarks).sum(1, keepdim=True).detach()
 test_noise = mixing_noise(batch_size, 512, 0.9, device)
 
-psp_loss = PSPLoss().cuda()
+psp_loss = PSPLoss(id_lambda=0).cuda()
 mes_loss = MesBceWasLoss(heatmapper, bce_coef=1000000, was_coef=2000)
 
 image_accumulator = Accumulator(enc_dec.generator, decay=0.99, write_every=100)
@@ -135,10 +140,12 @@ for i in range(100000):
 
     WR.counter.update(i)
 
-    # real_img = next(LazyLoader.celeba().loader).cuda()
-    real_img = next(LazyLoader.w300().loader_train_inf)["data"].cuda()
-    landmarks = torch.clamp(next(LazyLoader.w300augment_landmarks(args.data_path).loader_train_inf).cuda(), max=1)
+    batch = next(loader)
+    real_img = batch[0].cuda()
+    seg = batch[1].cuda()
+    landmarks = ContFinder.get_conturs_batch(seg).coord
     heatmap_sum = heatmapper.forward(landmarks).sum(1, keepdim=True).detach()
+    # print(landmarks.shape)
 
     coefs = json.load(open(os.path.join(sys.path[0], "../parameters/cycle_loss_2.json")))
 
@@ -158,10 +165,11 @@ for i in range(100000):
         .minimize_step(gan_model_obratno.optimizer.opt_min)
 
     fake2, _ = enc_dec.generate(heatmap_sum)
-    WR.writable("cycle", mes_loss.forward)(hg.forward(fake2)["mes"], UniformMeasure2D01(landmarks)).__mul__(coefs["hm"])\
+    WR.writable("cycle", mes_loss.forward)(hg.forward(fake2)["mes"], UniformMeasure2D01(landmarks)).__mul__(coefs["hm"]) \
         .minimize_step(gan_model_tuda.optimizer.opt_min, gan_model_obratno.optimizer.opt_min)
 
-    latent = enc_dec.encode_latent(g_transforms(image=real_img)["image"])
+    # latent = enc_dec.encode_latent(g_transforms(image=real_img)["image"])
+    latent = enc_dec.encode_latent(real_img)
     restored = enc_dec.decode(hg.forward(real_img)["hm_sum"], latent)
     WR.writable("cycle2", psp_loss.forward)(real_img, real_img, restored, latent).__mul__(coefs["img"])\
         .minimize_step(gan_model_tuda.optimizer.opt_min, gan_model_obratno.optimizer.opt_min, style_opt)
@@ -178,14 +186,14 @@ for i in range(100000):
                 'dh': hm_discriminator.state_dict(),
                 's': enc_dec.style_encoder.state_dict()
             },
-            f'{Paths.default.models()}/hm2img_{str(i + starting_model_number).zfill(6)}.pt',
+            f'{Paths.default.models()}/brats_hm_{str(i + starting_model_number).zfill(6)}.pt',
         )
 
     if i % 100 == 0:
         print(i)
         with torch.no_grad():
 
-            tl2 = verka_300w_w2(hg)
+            tl2 = verka_segm_cont(hg, brats_data)
             writer.add_scalar("verka", tl2, i)
 
             sk_pred = hg.forward(test_img)["hm_sum"]

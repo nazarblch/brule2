@@ -17,7 +17,7 @@ from torch.utils.data import Subset
 
 image_size = 256
 padding = 68
-N = 3148
+N = 300
 prob = np.ones(padding) / padding
 
 print("N", N)

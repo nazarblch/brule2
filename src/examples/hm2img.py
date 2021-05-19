@@ -19,7 +19,7 @@ from parameters.run import RuntimeParameters
 from models.autoencoder import StyleGanAutoEncoder
 from loss.l1 import l1_loss
 from loss.mes import MesBceWasLoss, MesBceL2Loss
-from metrics.board import send_images_to_tensorboard
+from metrics.board import send_images_to_tensorboard, plot_img_with_lm
 
 from loss.weighted_was import OTWasLoss
 from metrics.landmarks import verka_300w, verka_300w_w2
@@ -35,7 +35,7 @@ import random
 from gan.loss.loss_base import Loss
 import numpy as np
 import time
-from dataset.toheatmap import ToGaussHeatMap, CoordToGaussSkeleton
+from dataset.toheatmap import ToGaussHeatMap, CoordToGaussSkeleton, heatmap_to_measure
 
 from typing import List
 import torch.utils.data
@@ -54,11 +54,11 @@ from optim.accumulator import Accumulator
 from parameters.path import Paths
 
 
-manualSeed = 72
+manualSeed = 79
 random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 
-batch_size = 4
+batch_size = 8
 image_size = 256
 noise_size = 512
 n_mlp = 8
@@ -104,8 +104,8 @@ discriminator_img.load_state_dict(weights['di'])
 discriminator_img = discriminator_img.cuda()
 
 heatmapper = ToGaussHeatMap(256, 4)
-hg = HG_heatmap(heatmapper, num_blocks=4)
-# hg.load_state_dict(weights['gh'])
+hg = HG_heatmap(heatmapper, num_blocks=1)
+hg.load_state_dict(weights['gh'])
 hg = hg.cuda()
 hm_discriminator = Discriminator(image_size, input_nc=1, channel_multiplier=1)
 hm_discriminator.load_state_dict(weights["dh"])
@@ -119,28 +119,35 @@ style_opt = optim.Adam(enc_dec.style_encoder.parameters(), lr=1e-5)
 writer = SummaryWriter(f"{Paths.default.board()}/hm2img{int(time.time())}")
 WR.writer = writer
 
-test_img = next(LazyLoader.w300().loader_train_inf)["data"].cuda()
+batch = next(LazyLoader.w300().loader_train_inf)
+test_img = batch["data"].cuda()
 test_landmarks = torch.clamp(next(LazyLoader.w300_landmarks(args.data_path).loader_train_inf).cuda(), max=1)
 test_hm = heatmapper.forward(test_landmarks).sum(1, keepdim=True).detach()
 test_noise = mixing_noise(batch_size, 512, 0.9, device)
 
 psp_loss = PSPLoss().cuda()
-mes_loss = MesBceWasLoss(heatmapper, bce_coef=100000, was_coef=2000)
+mes_loss = MesBceWasLoss(heatmapper, bce_coef=1000000, was_coef=2000)
 
 image_accumulator = Accumulator(enc_dec.generator, decay=0.99, write_every=100)
 hm_accumulator = Accumulator(hg, decay=0.99, write_every=100)
+
+#
+# fake, _ = enc_dec.generate(test_hm, test_noise)
+# plt_img = torch.cat([test_img[:3], fake[:3]]).detach().cpu()
+# plt_lm = torch.cat([hg.forward(test_img)["mes"].coord[:3], test_landmarks[:3]]).detach().cpu()
+# plot_img_with_lm(plt_img, plt_lm, nrows=2, ncols=3)
 
 
 for i in range(100000):
 
     WR.counter.update(i)
 
-    # real_img = next(LazyLoader.celeba().loader).cuda()
-    real_img = next(LazyLoader.w300().loader_train_inf)["data"].cuda()
+    batch = next(LazyLoader.w300().loader_train_inf)
+    real_img = batch["data"].cuda()
     landmarks = torch.clamp(next(LazyLoader.w300_landmarks(args.data_path).loader_train_inf).cuda(), max=1)
     heatmap_sum = heatmapper.forward(landmarks).sum(1, keepdim=True).detach()
 
-    coefs = json.load(open(os.path.join(sys.path[0], "../parameters/cycle_loss.json")))
+    coefs = json.load(open(os.path.join(sys.path[0], "../parameters/cycle_loss_2.json")))
 
     fake, fake_latent = enc_dec.generate(heatmap_sum)
     fake_latent_pred = enc_dec.encode_latent(fake)
@@ -158,7 +165,7 @@ for i in range(100000):
         .minimize_step(gan_model_obratno.optimizer.opt_min)
 
     fake2, _ = enc_dec.generate(heatmap_sum)
-    WR.writable("cycle", mes_loss.forward)(hg.forward(fake2)["mes"], UniformMeasure2D01(landmarks)).__mul__(coefs["hm"])\
+    WR.writable("cycle", mes_loss.forward)(hg.forward(fake2)["mes"], UniformMeasure2D01(landmarks)).__mul__(coefs["hm"]) \
         .minimize_step(gan_model_tuda.optimizer.opt_min, gan_model_obratno.optimizer.opt_min)
 
     latent = enc_dec.encode_latent(g_transforms(image=real_img)["image"])

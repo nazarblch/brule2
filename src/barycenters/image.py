@@ -4,11 +4,29 @@ Debiased Sinkhorn barycenters.
 """
 #
 # License: MIT License
-
+import ot
 import torch
 import numpy as np
-
 import warnings
+
+from barycenters import gmm
+from barycenters.gmm import MaskToMixtureGPU
+from dataset.toheatmap import make_coords
+
+
+def createM(width: int):
+
+    grid = torch.linspace(0., 1., width, device="cuda", dtype=torch.float64)
+    M = (grid[:, None] - grid[None, :]) ** 2
+    return M
+
+
+def createK(width: int, eps=0.1):
+
+    grid = torch.linspace(0., 1., width, device="cuda", dtype=torch.float64)
+    M = (grid[:, None] - grid[None, :]) ** 2
+    K = torch.exp(- M / eps)
+    return K
 
 
 def convol_imgs(imgs, K):
@@ -222,10 +240,11 @@ def barycenter_1d(P, K, maxiter=5000, tol=1e-5,
     return q
 
 
-def barycenter_debiased_2d(P, K, Kb=None, c=None, maxiter=5000, tol=1e-5,
+def barycenter_debiased_2d(P, K, Kb=None, c=None, maxiter=300, tol=1e-5,
                            weights=None, return_log=False):
     """Compute the Wasserstein divergence barycenter between histograms.
     """
+    P = P.type(torch.float64)
     n_hists, width, _ = P.shape
     b = torch.ones_like(P, requires_grad=False)
     q = torch.ones((width, width), dtype=P.dtype, device=P.device)
@@ -242,7 +261,7 @@ def barycenter_debiased_2d(P, K, Kb=None, c=None, maxiter=5000, tol=1e-5,
         a = P / Kb
         Ka = convol_imgs(a, K.t())
         q = c * torch.prod((Ka) ** weights[:, None, None], dim=0)
-        for kk in range(10):
+        for kk in range(15):
             Kc = K.t().mm(K.mm(c).t()).t()
             c = (c * q / Kc) ** 0.5
         Q = q[None, :, :]
@@ -264,7 +283,7 @@ def barycenter_debiased_2d(P, K, Kb=None, c=None, maxiter=5000, tol=1e-5,
 
     if return_log:
         return q, log
-    return q
+    return q.type(torch.float32)
 
 
 def barycenter_2d(P, K, Kb=None, maxiter=5000, tol=1e-5,
@@ -272,6 +291,7 @@ def barycenter_2d(P, K, Kb=None, maxiter=5000, tol=1e-5,
     """Compute the Wasserstein divergence barycenter between histograms.
     """
     n_hists, width, _ = P.shape
+    P = P.type(torch.float64)
     b = torch.ones_like(P, requires_grad=False)
     q = torch.ones((width, width), dtype=P.dtype, device=P.device)
     if Kb is None:
@@ -303,7 +323,7 @@ def barycenter_2d(P, K, Kb=None, maxiter=5000, tol=1e-5,
 
     if return_log:
         return q, log
-    return q
+    return q.type(torch.float32)
 
 
 def barycenter(P, K, reference="debiased", **kwargs):
@@ -562,3 +582,66 @@ def barycenter_np(P, K, debiased=True, **kwargs):
     else:
         func = barycenter_np_1d
     return func(P, K, **kwargs)
+
+
+def w2_dist(p, q):
+
+    width, _ = p.shape
+    prob = np.ones(200) / 200
+
+    def compute_w2(l1, p1, l2, p2):
+        M_ij = ot.dist(l1, l2)
+        D_ij = ot.emd2(p1, p2, M_ij)
+        return D_ij
+
+    mask_to_mes = MaskToMixtureGPU(width, 200)
+    g1 = mask_to_mes.forward(p[None, ], 0.0001)
+    g2 = mask_to_mes.forward(q[None, ], 0.0001)
+
+    print(g2.probability.sum())
+    print(g2.probability.min())
+    print(g2.probability.max())
+
+
+    return compute_w2(g1.coord[0].numpy(), g1.probability[0].reshape(-1).numpy(),
+                      g2.coord[0].numpy(), g2.probability[0].reshape(-1).numpy())
+
+
+
+
+
+def ot_dist(P, q, b=None, maxiter=1000,
+                       tol=1e-6, eps=0.01):
+    """Compute the Wasserstein divergence barycenter between histograms.
+    """
+    n_hists, width, _ = P.shape
+    P = P.type(torch.float64)
+    q = q.type(torch.float64)
+
+    M = createM(width)
+    K = torch.exp(- M / eps)
+    if b is None:
+        b = torch.ones_like(P, dtype=P.dtype, device=P.device)
+    Kb = convol_imgs(b, K)
+
+    a = None
+
+    for ii in range(maxiter):
+
+        a = P / Kb
+        Ka = convol_imgs(a, K.t())
+        b = q / Ka
+        Kb = convol_imgs(b, K)
+        err = abs(a * Kb - P).mean()
+        if err < tol and ii > 10:
+            break
+
+    M_large = M.cpu()[:, None, :, None] + M.cpu()[None, :, None, :]
+    M_large = M_large.reshape(width ** 2, width ** 2)
+    KM = torch.exp(- M_large / eps) * M_large
+
+    a = a.reshape(n_hists, -1).cpu()
+    b = b.reshape(n_hists, -1).cpu()
+
+    return torch.einsum("ki,ij,kj->k", a, KM, b)
+

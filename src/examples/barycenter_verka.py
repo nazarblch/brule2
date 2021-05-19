@@ -22,48 +22,28 @@ from joblib import Parallel, delayed
 
 
 N = 100
-dataset = LazyLoader.human36().dataset_train
-D = np.load(f"{Paths.default.models()}/hum36_graph{N}.npy")
-padding = 32
+dataset = LazyLoader.w300().dataset_train
+D = np.load(f"{Paths.default.models()}/w300graph{N}.npy")
+padding = 68
 prob = np.ones(padding) / padding
-NS = 1000
-
-starting_model_number = 90000 + 130000
-weights = torch.load(
-    f'{Paths.default.models()}/human_{str(starting_model_number).zfill(6)}.pt',
-    map_location="cpu"
-)
-
-
-enc_dec = StyleGanAutoEncoder(hm_nc=32, image_size=128).load_state_dict(weights).cuda()
-heatmapper = ToGaussHeatMap(128, 2)
-test_landmarks = torch.clamp(next(LazyLoader.human_landmarks("human_part_13410").loader_train_inf).cuda(), max=1)
-test_hm = heatmapper.forward(test_landmarks).detach()
-
-fake, _ = enc_dec.generate(test_hm)
-
-grid = make_grid(
-    fake, nrow=4, padding=2, pad_value=0, normalize=True, range=(-1, 1),
-    scale_each=False)
-
-plt.imshow(grid.permute(1, 2, 0).detach().cpu().numpy())
-plt.show()
+NS = 7000
 
 
 def LS(k):
-    return dataset[k]["paired_B"].numpy()
+    return dataset[k]["meta"]['keypts_normalized'].numpy()
 
 ls = []
 images = []
 
 for k in range(N):
     dk = dataset[k]
-    ls.append(dk["paired_B"].numpy())
-    images.append(dk["A"])
+    ls.append(dk["meta"]['keypts_normalized'].numpy())
+    images.append(dk["data"])
 
 
 # bc_sampler = Uniform2DBarycenterSampler(padding, dir_alpha=1.0)
-bc_sampler = ImageBarycenterSampler(padding, dir_alpha=0.01)
+bc_sampler = ImageBarycenterSampler(padding, dir_alpha=4.0)
+heatmapper = ToGaussHeatMap(256, 4)
 
 # [51, 52, 85, 86]
 # [1, 44, 34, 94, 10, 72]
@@ -74,7 +54,26 @@ bc_sampler = ImageBarycenterSampler(padding, dir_alpha=0.01)
 # [13, 77, 32, 38, 99]
 # [9, 40, 36, 66, 67, 78]
 # [3, 35, 18, 55, 63, 25, 15]
-data = []
+data_img = []
+data_lm = []
+
+def plot_img_with_lm(img: torch.Tensor, lm: torch.Tensor, nrows=4, ncols=4):
+
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(nrows * 2.5, ncols * 2.5))
+
+    for i in range(nrows):
+        for j in range(ncols):
+            index = i * nrows + j
+            axes[i, j].axis("off")
+            axes[i, j].imshow(((img[index]).permute(1, 2, 0).numpy() + 1) * 0.5)
+            b = lm[index].numpy() * 255
+            axes[i, j].scatter(b[:, 0], b[:, 1], c="white", s=2)
+
+    plt.subplots_adjust(wspace=.05, hspace=.05)
+    plt.show()
+
+
+
 
 def add_bc(sample):
 
@@ -83,32 +82,18 @@ def add_bc(sample):
     B, I, Bws = bc_sampler.sample(landmarks, img)
     I = I.type(torch.float32)
 
-
-
     for i in sample:
 
-        hm = heatmapper.forward(torch.from_numpy(ls[i])[None, ])[0].sum(0, keepdim=True)
-        data.append((hm)[None,])
-        # plt.imshow(((images[i]+hm).permute(1, 2, 0).numpy() + 1) * 0.5)
-        # plt.show()
+        data_img.append(images[i][None, ])
+        data_lm.append(torch.from_numpy(ls[i])[None,])
 
-    hm = heatmapper.forward(torch.from_numpy(B)[None, ])[0].sum(0, keepdim=True).type(torch.float32)
-    plt.imshow(((I + hm).permute(1, 2, 0).numpy() + 1) * 0.5)
-    plt.show()
+    data_img.append(I[None, ])
+    data_lm.append(torch.from_numpy(B)[None,].type(torch.float32))
 
-    data.append((hm)[None,])
-
-add_bc([34])
+add_bc([34, 94, 10])
 add_bc([7, 17, 65])
 add_bc([54, 48, 37])
 add_bc([66, 67, 78])
 
-data = torch.cat(data)
-grid = make_grid(
-    data, nrow=4, padding=2, pad_value=0, normalize=True, range=(-1, 1),
-    scale_each=False)
-
-print(grid.shape)
-plt.imshow(grid.permute(1, 2, 0).numpy())
-plt.show()
+plot_img_with_lm(torch.cat(data_img), torch.cat(data_lm))
 

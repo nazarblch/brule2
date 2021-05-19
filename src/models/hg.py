@@ -424,6 +424,17 @@ class HG_heatmap(nn.Module):
         self.hm_to_coord = nn.Sequential(*self.hm_to_coord)
 
         self.heatmapper = heatmapper
+        self.up = nn.Upsample(size=image_size)
+
+    def postproc(self, hm: Tensor):
+
+        B = hm.shape[0]
+
+        return hm.clamp(-100, 30)\
+                   .view(B, self.num_classes, -1)\
+                   .softmax(dim=2)\
+                   .view(B, self.num_classes, self.heatmap_size, self.heatmap_size)
+
 
     def forward(self, image: Tensor):
         B, C, D, D = image.shape
@@ -433,13 +444,19 @@ class HG_heatmap(nn.Module):
         coords = self.hm_to_coord(out)
         hm = self.heatmapper.forward(coords)
 
+        # hm = self.up(self.postproc(out))
+        # coords, _ = heatmap_to_measure(hm)
+        # hm_g = self.heatmapper.forward(coords)
+
         assert coords.max().item() is not None
         assert coords.max().item() < 2
 
         return {
             "mes": UniformMeasure2D01(coords),
             "hm": hm,
-            "hm_sum": hm.sum(dim=1, keepdim=True)
+            "hm_sum": hm.sum(dim=1, keepdim=True),
+            "hm_g": None,
+            "hm_g_sum": None,
         }
 
 

@@ -9,7 +9,7 @@ class DatasetParameters(ArgumentParser):
         self.add_argument('--batch_size', type=int, default=8)
         self.add_argument('--measure_size', type=int, default=68)
         self.add_argument('--data_path', type=str, default="")
-        # self.add_argument('--data_size', type=int, default=100)
+        self.add_argument('--data_size', type=int, default=100)
 
 
 

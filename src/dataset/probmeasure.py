@@ -166,8 +166,8 @@ class UniformMeasure2D01(ProbabilityMeasure):
 
 class ProbabilityMeasureFabric:
     def __init__(self, size):
-        use_cuda = torch.cuda.is_available()
-        self.dtype = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
+        # use_cuda = torch.cuda.is_available()
+        # self.dtype = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
         self.size = size
 
     def cat(self, list_measure: List[ProbabilityMeasure]):
@@ -175,23 +175,24 @@ class ProbabilityMeasureFabric:
         tmp = [i.padding(size) for i in list_measure]
         return ProbabilityMeasure(torch.cat([i.probability for i in tmp], dim=0), torch.cat([i.coord for i in tmp], dim=0))
 
-    def __from_one_mask(self, image: Tensor):
-        assert(len(image.size()) == 2)
-        weights = image.type(self.dtype)
-        indices = (weights > 1e-5).nonzero().type(self.dtype) / float(self.size)
-        indices = indices[:,[1,0]]
-        indices.view(-1,2)
-        values = torch.ones_like(weights)[weights > 1e-5].view(-1).type(self.dtype)
-        values = values/values.sum(dim=0)
-        assert(indices.shape[1] == 2)
+    def _from_one_mask(self, image: Tensor, border=1e-5):
+        assert (len(image.size()) == 2)
+
+        weights = image
+        indices = (weights > border).nonzero() / float(self.size)
+        indices = indices[:, [1, 0]]
+        indices.view(-1, 2)
+        values = torch.ones_like(weights)[weights > border].view(-1)
+        values = values / values.sum(dim=0)
+        assert (indices.shape[1] == 2)
         return ProbabilityMeasure(values[None,], indices[None,])
 
-    def from_mask(self, image: Tensor):
+    def from_mask(self, image: Tensor, border=1e-5):
         if len(image.shape) == 4:
             assert image.shape[1] == 1
             image = image[:, 0, :, :]
 
-        probabilymeasurelist = [self.__from_one_mask(image[i]) for i in range(len(image))]
+        probabilymeasurelist = [self._from_one_mask(image[i], border) for i in range(len(image))]
         return self.cat(probabilymeasurelist)
 
     def from_channels(self, x: Tensor) -> ProbabilityMeasure:

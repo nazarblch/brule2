@@ -15,7 +15,7 @@ from parameters.run import RuntimeParameters
 from dataset.transforms import ToNumpy, NumpyBatch, ToTensor
 
 from loss.mes import MesBceWasLoss
-from metrics.board import send_images_to_tensorboard
+from metrics.board import send_images_to_tensorboard, plot_img_with_lm
 from metrics.landmarks import verka_cardio_w2
 from models.autoencoder import StyleGanAutoEncoder
 
@@ -93,7 +93,7 @@ g_transforms = albumentations.Compose([
         ToTensor(device),
     ])
 
-starting_model_number = 160000 + args.weights
+starting_model_number = 160000 + 90000
 weights = torch.load(
     f'{Paths.default.models()}/cardio_{str(starting_model_number).zfill(6)}.pt',
     map_location="cpu"
@@ -135,6 +135,11 @@ mes_loss = MesBceWasLoss(heatmapper, bce_coef=1000000, was_coef=2000)
 
 image_accumulator = Accumulator(enc_dec.generator, decay=0.99, write_every=100)
 hm_accumulator = Accumulator(hg, decay=0.99, write_every=100)
+
+fake, _ = enc_dec.generate(test_hm, test_noise)
+plt_img = torch.cat([test_img[:3], fake[:3]]).detach().cpu()
+plt_lm = torch.cat([hg.forward(test_img)["mes"].coord[:3], test_landmarks[:3]]).detach().cpu()
+plot_img_with_lm(plt_img, plt_lm, nrows=2, ncols=3)
 
 for i in range(100000):
 

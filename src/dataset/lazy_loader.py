@@ -6,6 +6,7 @@ from torch import nn, Tensor
 from torch.utils import data
 from torch.utils.data import DataLoader, Subset
 
+from dataset.brats import BraTS3D, Dataset3DTo2D, FilterDataset, BraTS2D, MasksDataset
 from dataset.cardio_dataset import ImageMeasureDataset, ImageDataset, CelebaWithLandmarks
 from dataset.cardio_keypts import CardioDataset, LandmarksDataset, LandmarksDatasetAugment
 from dataset.d300w import ThreeHundredW
@@ -36,6 +37,67 @@ def sample_data(loader):
 
 class AbstractLoader:
     pass
+
+
+class BraTSLoader(AbstractLoader):
+
+    batch_size = 8
+    test_batch_size = 8
+    image_size = 256
+
+    transforms = albumentations.Compose([
+        albumentations.Resize(image_size, image_size),
+        albumentations.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ToTensorV2()
+    ])
+
+    def __init__(self):
+
+        path = "/raid/data/BraTS_dataset/BraTS2020_TrainingData/MICCAI_BraTS2020_TrainingData"
+        self.dataset = FilterDataset(
+            BraTS2D(path, BraTSLoader.transforms),
+            lambda data: data[1].sum() > 100, load=True
+        )
+
+        N = self.dataset.__len__()
+
+        self.dataset_train = Subset(self.dataset, range(int(N * 0.8)))
+
+        self.loader_train = data.DataLoader(
+            self.dataset_train,
+            batch_size=BraTSLoader.batch_size,
+            sampler=data_sampler(self.dataset_train, shuffle=True, distributed=False),
+            drop_last=True,
+            num_workers=10
+        )
+
+        self.loader_train_inf = sample_data(self.loader_train)
+
+        self.dataset_test = Subset(self.dataset, range(int(N * 0.8), N))
+
+        self.test_loader = data.DataLoader(
+            self.dataset_test,
+            batch_size=BraTSLoader.test_batch_size,
+            drop_last=False,
+            num_workers=10
+        )
+
+        N = 3529
+        self.masks_bc = MasksDataset(path=f"{Paths.default.data()}/brats_{N}", transform=ToTensorV2())
+
+        self.loader_masks_bc = data.DataLoader(
+            self.masks_bc,
+            batch_size=BraTSLoader.batch_size,
+            sampler=data_sampler(self.masks_bc, shuffle=True, distributed=False),
+            drop_last=True,
+            num_workers=10
+        )
+
+        self.loader_masks_bc_inf = sample_data(self.loader_masks_bc)
+
+        print("BraTS initialize")
+        print(f"train size: {len(self.dataset_train)}, test size: {len(self.dataset_test)}, bc size: {len(self.masks_bc)}")
+
 
 
 class W300DatasetLoader:

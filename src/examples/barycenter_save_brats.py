@@ -3,10 +3,13 @@ import sys, os
 import torch
 
 from barycenters.simplex import MaxCliq, CliqSampler
+from dataset.cfinder import ContFinder, fill_contour
+from dataset.hum36 import SimpleHuman36mDataset
+from parameters.dataset import DatasetParameters
 
 sys.path.append(os.path.join(sys.path[0], '/home/nazar/PycharmProjects/brule2/src/'))
 
-from dataset.lazy_loader import LazyLoader, W300DatasetLoader, CelebaWithKeyPoints, Celeba
+from dataset.lazy_loader import LazyLoader, W300DatasetLoader, CelebaWithKeyPoints, Celeba, BraTSLoader
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,26 +18,25 @@ from dataset.probmeasure import UniformMeasure2D01
 import pandas as pd
 import networkx as nx
 import ot
-from barycenters.sampler import Uniform2DBarycenterSampler, Uniform2DAverageSampler
+from barycenters.sampler import Uniform2DBarycenterSampler, Uniform2DAverageSampler, SegmentationBarycenterSampler
 from parameters.path import Paths
 from joblib import Parallel, delayed
 
+N = 3529
+D = np.load(f"{Paths.default.models()}/brats_graph{N}.npy")
+NS = 1000
 
-N = 300
-dataset = LazyLoader.w300().dataset_train
-D = np.load(f"{Paths.default.models()}/w300graph{600}.npy")
-D = D[0: 2*N: 2, 0: 2 *N: 2]
-padding = 68
-prob = np.ones(padding) / padding
-NS = 7000
+print(D.reshape(-1).mean())
+plt.hist(D.reshape(-1), bins=30)
+plt.show()
 
+data = BraTSLoader().dataset_train
 
 def LS(k):
-    return dataset[k]["meta"]['keypts_normalized'].numpy()
+    cont = ContFinder().get_contours(data[k][1].numpy()) / 255
+    return cont
 
-
-ls = np.asarray([LS(k) for k in range(0, 2*N, 2)])
-# ls2 = np.asarray([LS(k) for k in range(N, 2 * N)])
+ls = np.asarray([LS(k) for k in range(N)])
 
 def viz_mes(ms):
     heatmaper = ToGaussHeatMap(128, 1)
@@ -51,10 +53,8 @@ def viz_mes(ms):
     return kapusta / kapusta.sum()
 
 ls_mes = viz_mes(ls)
-# ls_mes_2 = viz_mes(ls2)
 
-bc_sampler = Uniform2DBarycenterSampler(padding, dir_alpha=1.0)
-# bc_sampler = Uniform2DAverageSampler(padding, dir_alpha=1.0)
+bc_sampler = Uniform2DBarycenterSampler(500, dir_alpha=1.0)
 
 def juja(a, b):
 
@@ -89,21 +89,23 @@ def kl(p, q):
     return np.sum(np.where(p != 0, p * np.log(p / q), 0))
 
 
-ent, bcs = juja(a=0.1, b=6)
+ent, bcs = juja(a=0.20, b=6)
 print(ent)
 
+bcs_seg = []
 
-# os.mkdir(f"{Paths.default.data()}/w300_bc_{N}_avg")
-# os.mkdir(f"{Paths.default.data()}/w300_bc_{N}_avg/lmbc")
-# os.mkdir(f"{Paths.default.data()}/w300_bc_{N}_avg/lm")
-#
-for i,b in enumerate(bcs):
-    np.save(f"{Paths.default.data()}/w300_bc_{N}/lmbc/{i}.npy", b)
+for b in bcs:
+    seg = fill_contour(b)[np.newaxis, ]
+    bcs_seg.append(seg)
 
-for i,b in enumerate(ls):
-    np.save(f"{Paths.default.data()}/w300_bc_{N}/lm/{i}.npy", b)
+os.mkdir(f"{Paths.default.data()}/brats_lm_{N}")
+os.mkdir(f"{Paths.default.data()}/brats_lm_{N}/lmbc")
+os.mkdir(f"{Paths.default.data()}/brats_lm_{N}/lm")
 
-# ent = kl(ls_mes, bc_mes) + kl(bc_mes, ls_mes)
 
-# print(ent)
-#
+for i,b in enumerate(bcs_seg):
+    np.save(f"{Paths.default.data()}/brats_lm_{N}/lmbc/{i}.npy", b)
+
+# for i,b in enumerate(ls):
+#     np.save(f"{Paths.default.data()}/brats_lm_{N}/lm/{i}.npy", b)
+

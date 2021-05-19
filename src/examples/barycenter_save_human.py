@@ -22,14 +22,16 @@ from parameters.path import Paths
 from joblib import Parallel, delayed
 
 N = 13410
+NN = 1500
 D = np.load(f"{Paths.default.models()}/hum36_graph{N}.npy")
+D = D[0: NN: 1, 0: NN: 1]
 padding = 32
 prob = np.ones(padding) / padding
-NS = 13000
+NS = 5000
 
-print(D.reshape(-1).mean())
-plt.hist(D.reshape(-1), bins=30)
-plt.show()
+# print(D.reshape(-1).mean())
+# plt.hist(D.reshape(-1), bins=30)
+# plt.show()
 
 parser = DatasetParameters()
 args = parser.parse_args()
@@ -44,7 +46,8 @@ def LS(k):
     return data[k]["paired_B"].numpy()
 
 
-ls = np.asarray([LS(k) for k in range(N)])
+ls = np.asarray([LS(k) for k in range(0, NN, 1)])
+# ls2 = np.asarray([LS(k) for k in range(NN, 2 * NN)])
 
 def viz_mes(ms):
     heatmaper = ToGaussHeatMap(128, 1)
@@ -121,22 +124,18 @@ def kl(p, q):
     return np.sum(np.where(p != 0, p * np.log(p / q), 0))
 
 
-ent, bcs = juja(a=0.26, b=6)
+ent, bcs = juja(a=0.1, b=6)
 print(ent)
 
-heatmaper = ToGaussHeatMap(128, 1)
-keyptsiki = torch.from_numpy(bcs[1])[None,].clamp(0, 1)
-tmp = heatmaper.forward(keyptsiki)
-plt.imshow(tmp.sum((0, 1)).numpy())
-plt.show()
+
 
 # os.mkdir(f"{Paths.default.data()}/human_part_{N}")
 # os.mkdir(f"{Paths.default.data()}/human_part_{N}/lmbc")
 # os.mkdir(f"{Paths.default.data()}/human_part_{N}/lm")
 
-for i,b in enumerate(bcs):
-    np.save(f"{Paths.default.data()}/human_part_{N}/lmbc/{i}.npy", b)
-
-for i,b in enumerate(ls):
-    np.save(f"{Paths.default.data()}/human_part_{N}/lm/{i}.npy", b)
-
+# for i,b in enumerate(bcs):
+#     np.save(f"{Paths.default.data()}/human_part_{N}/lmbc/{i}.npy", b)
+#
+# for i,b in enumerate(ls):
+#     np.save(f"{Paths.default.data()}/human_part_{N}/lm/{i}.npy", b)
+#

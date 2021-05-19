@@ -29,7 +29,7 @@ from joblib import Parallel, delayed
 from torch import nn
 
 
-N = 300
+N = 600
 dataset = LazyLoader.w300().dataset_train
 D = np.load(f"{Paths.default.models()}/w300graph{N}.npy")
 padding = 68
@@ -42,34 +42,15 @@ def LS(k):
 
 ls = np.asarray([LS(k) for k in range(N)])
 
-def viz_mes(ms):
-    heatmaper = ToGaussHeatMap(128, 1)
-
-    kapusta = torch.zeros(128, 128)
-    for m in ms:
-        keyptsiki = torch.from_numpy(m)[None,]
-        tmp = heatmaper.forward(keyptsiki)
-        kapusta += tmp.sum(axis=(0, 1))
-
-    # plt.imshow(kapusta)
-    # plt.show()
-
-    return kapusta / kapusta.sum()
-
-ls2 = np.asarray([LS(k) for k in range(N, 3*N)])
-ls_mes = viz_mes(ls2)
+ls2 = np.asarray([LS(k) for k in range(N, 2*N)])
 
 
 def compute_w2(l1, l2):
-
-    M_ij = ot.dist(l1, l2)
+    M_ij = ot.dist(l1, l2, metric="euclidean")
     D_ij = ot.emd2(prob, prob, M_ij, processes=10)
     return D_ij
 
 bc_sampler = Uniform2DBarycenterSampler(padding, dir_alpha=1.0)
-
-parameter_a = np.arange(0.15, 0.25, 0.01)
-parameter_b = range(3, 8, 1)
 
 
 def juja(a, b):
@@ -79,45 +60,17 @@ def juja(a, b):
         B, Bws = bc_sampler.sample(landmarks)
         return B
 
-    cliques, K = MaxCliq(a, b, 0.03).forward(D)
+    cliques, K = MaxCliq(a, b).forward(D)
     cl_sampler = CliqSampler(cliques)
-    cl_samples = cl_sampler.sample(2 * N)
+    cl_samples = cl_sampler.sample(N)
 
     bc_samples = list(Parallel(n_jobs=30)(delayed(juja_inside)(sample) for sample in cl_samples))
 
-    # bc_mes = viz_mes(bc_samples)
-    # ent = kl(ls_mes, bc_mes) + kl(bc_mes, ls_mes)
-    #
-    # return ent
-
     disc_loss = parameters_wloss(np.asarray(bc_samples), ls2)
-    print(disc_loss)
+    print(a, b, disc_loss)
 
     return disc_loss
 
-
-def kl(p, q):
-    """Kullback-Leibler divergence D(P || Q) for discrete distributions
-    Parameters
-    ----------
-    p, q : array-like, dtype=float, shape=n
-    Discrete probability distributions.
-    """
-    p = np.asarray(p, dtype=np.float)
-    q = np.asarray(q, dtype=np.float)
-
-    return np.sum(np.where(p != 0, p * np.log(p / q), 0))
-
-
-
-
-
-def sample_data(arr: np.ndarray, batch_size: int):
-    while True:
-        for i in range(0, arr.shape[0] - batch_size, batch_size):
-            yield torch.cat([
-                torch.from_numpy(arr[i + j]).type(torch.float32)[None, ] for j in range(batch_size)
-            ]).cuda()
 
 
 def parameters_wloss(ldmrks1, ldmrks2):
@@ -133,18 +86,11 @@ def parameters_wloss(ldmrks1, ldmrks2):
 
     return ot.emd2(prob_d, prob_d, D)
 
+res = juja(0.08, 6)
+res = juja(0.10, 6)
+res = juja(0.12, 6)
+res = juja(0.15, 6)
+res = juja(0.20, 6)
+res = juja(0.10, 4)
+res = juja(0.10, 5)
 
-
-best = 10000
-
-for a in parameter_a:
-
-    suma = 0
-
-    for b in parameter_b:
-        res = juja(a, b)
-        suma += res / len(parameter_b)
-
-        print("a: {}, b: {}, res: {}".format(a, b, res))
-
-    print(a, suma)
