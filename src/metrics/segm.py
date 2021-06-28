@@ -28,7 +28,7 @@ def verka_segm(enc, loader: BraTSLoader):
         segm_ref = batch[1].cuda()
         pred = enc(data)
         sum_loss += DiceSum().forward(pred, segm_ref).sum().item()
-    print("test loss: ", sum_loss / n)
+    print("test brule_loss: ", sum_loss / n)
     return sum_loss / n
 
 
@@ -41,5 +41,5 @@ def verka_segm_cont(enc, loader: BraTSLoader):
         landmarks = ContFinder.get_conturs_batch(segm_ref).coord
         pred = enc(data)["mes"].coord
         sum_loss += OTWasDist().forward(pred, landmarks).sum().item()
-    print("test loss: ", sum_loss / n)
+    print("test brule_loss: ", sum_loss / n)
     return sum_loss / n

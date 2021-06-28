@@ -1,7 +1,7 @@
 {
   "Fake-content D": 0.7,
-  "R_b": 14.0,
-  "R_t": 1500.0,
+  "R_b": 50.0,
+  "R_t": 40000.0,
   "L1 image": 10.0,
   "fake_content loss": 10.0,
   "obratno": 0.1,

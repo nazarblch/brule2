@@ -2,6 +2,7 @@ from torch import nn
 
 from dataset.lazy_loader import LazyLoader
 from loss.weighted_was import OTWasDist
+from torch.utils import data as torch_data
 
 
 def verka_cardio_w2(enc):
@@ -12,7 +13,7 @@ def verka_cardio_w2(enc):
         landmarks_ref = batch["keypoints"].cuda()
         pred = enc(data)["mes"].coord
         sum_loss += OTWasDist().forward(pred, landmarks_ref).sum().item()
-    print("test loss: ", sum_loss / n)
+    print("test brule_loss: ", sum_loss / n)
     return sum_loss / n
 
 
@@ -26,7 +27,7 @@ def verka_300w(enc):
         eye_dist = landmarks[:, 45] - landmarks[:, 36]
         eye_dist = eye_dist.pow(2).sum(dim=1).sqrt()
         sum_loss += ((pred - landmarks).pow(2).sum(dim=2).sqrt().mean(dim=1) / eye_dist).sum().item()
-    print("test loss: ", sum_loss / n)
+    print("test brule_loss: ", sum_loss / n)
     return sum_loss / n
 
 
@@ -40,7 +41,7 @@ def verka_300w_w2(enc):
         eye_dist = landmarks[:, 45] - landmarks[:, 36]
         eye_dist = eye_dist.pow(2).sum(dim=1).sqrt()
         sum_loss += (OTWasDist().forward(pred, landmarks) / eye_dist).sum().item()
-    print("test loss: ", sum_loss / n)
+    print("test brule_loss: ", sum_loss / n)
     return sum_loss / n
 
 
@@ -54,5 +55,28 @@ def verka_human(enc):
         # eye_dist = landmarks[:, 45] - landmarks[:, 36]
         # eye_dist = eye_dist.pow(2).sum(dim=1).sqrt()
         sum_loss += ((pred - landmarks).pow(2).sum(dim=2).sqrt().mean(dim=1) ).sum().item()
-    print("test loss: ", sum_loss / n)
+    print("test brule_loss: ", sum_loss / n)
+    return sum_loss / n
+
+
+def verka_300w_w2_boot(enc):
+
+    sum_loss = 0
+    n = len(LazyLoader.w300().test_dataset)
+    loader = torch_data.DataLoader(
+            LazyLoader.w300().test_dataset,
+            batch_size=16,
+            drop_last=False,
+            sampler=torch_data.RandomSampler(LazyLoader.w300().test_dataset, replacement=True, num_samples=n),
+            num_workers=20
+    )
+
+    for i, batch in enumerate(loader):
+        data = batch['data'].cuda()
+        landmarks = batch["meta"]["keypts_normalized"].cuda()
+        pred = enc(data)["mes"].coord
+        eye_dist = landmarks[:, 45] - landmarks[:, 36]
+        eye_dist = eye_dist.pow(2).sum(dim=1).sqrt()
+        sum_loss += (OTWasDist().forward(pred, landmarks) / eye_dist).sum().item()
+    # print("test brule_loss: ", sum_loss / n)
     return sum_loss / n

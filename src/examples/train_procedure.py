@@ -63,7 +63,7 @@ def gan_trainer(model, generator, decoder, style_encoder, style_opt):
 
         model.discriminator_train([real_img], [fake], [condition])
 
-        WR.writable("Generator loss", model.generator_loss)([real_img], [fake], [condition]) \
+        WR.writable("Generator brule_loss", model.generator_loss)([real_img], [fake], [condition]) \
             .minimize_step(model.optimizer.opt_min)
 
         fake = fake.detach()
@@ -113,9 +113,9 @@ def content_trainer_with_gan(encoder_HG, model, generator, decoder, style_encode
 
         ll = (
                 WR.L1("L1 image")(restored, real_img) * coefs["L1 image"] +
-                WR.writable("fake_content loss", coord_hm_loss)(
+                WR.writable("fake_content brule_loss", coord_hm_loss)(
                     fake_content, heatmap_content
-                ) * coefs["fake_content loss"] +
+                ) * coefs["fake_content brule_loss"] +
                 WR.writable("Fake-content D", model.loss.generator_loss)(
                     real=None,
                     fake=[fake, encoded["skeleton"].detach()]) * coefs["Fake-content D"]

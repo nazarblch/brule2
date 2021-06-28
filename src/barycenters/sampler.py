@@ -39,7 +39,8 @@ class Uniform2DBarycenterSampler:
             measures,
             [self.prob] * len(measures),
             self.X,
-            self.prob
+            self.prob,
+            numItermax=300
         )
 
 

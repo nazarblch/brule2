@@ -11,7 +11,7 @@ from dataset.toheatmap import ToGaussHeatMap, heatmap_to_measure
 class CardioDataset(Dataset):
     def __init__(self, csv_path, train=True, transform=None):
         super().__init__()
-        self.path = "/raid/data/ibespalov/CHAZOV_dataset/"
+        self.path = "/raid/data/CHAZOV_dataset/"
         self.csv = pd.read_csv(csv_path)
         if train:
             self.csv = self.csv[self.csv["fold"] != 4]

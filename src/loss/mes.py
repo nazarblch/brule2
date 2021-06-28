@@ -1,3 +1,5 @@
+from dataset.probmeasure import UniformMeasure2DFactory
+from dataset.toheatmap import ToGaussHeatMap, CoordToGaussSkeleton
 from gan.loss.loss_base import Loss
 from loss.weighted_was import OTWasLoss
 from torch import nn, Tensor
@@ -44,3 +46,36 @@ class MesBceWasLoss(nn.Module):
             nn.BCELoss()(pred_hm, target_hm) * self.bce_coef +
             OTWasLoss()(pred_mes.coord, target_mes.coord).to_tensor() * self.was_coef
         )
+
+
+def noviy_hm_loss(pred, target, coef=1.0):
+
+    pred = pred / pred.sum(dim=[2, 3], keepdim=True).detach()
+    target = target / target.sum(dim=[2, 3], keepdim=True).detach()
+
+    return Loss(
+        nn.BCELoss()(pred, target) * coef
+    )
+
+
+def coord_hm_loss(pred_coord: Tensor, target_hm: Tensor, coef=1.0):
+    target_hm = target_hm / target_hm.sum(dim=[2, 3], keepdim=True)
+    target_hm = target_hm.detach()
+
+    heatmapper = ToGaussHeatMap(256, 4)
+
+    target_coord = UniformMeasure2DFactory.from_heatmap(target_hm).coord.detach()
+    # sk = CoordToGaussSkeleton(target_hm.shape[-1], 1)
+    # pred_sk = sk.forward(pred_coord).sum(dim=1, keepdim=True)
+    # target_sk = sk.forward(target_coord).sum(dim=1, keepdim=True).detach()
+    pred_hm = heatmapper.forward(pred_coord).sum(dim=1, keepdim=True)
+    pred_hm = pred_hm / pred_hm.sum(dim=[2, 3], keepdim=True).detach()
+    target_hm = heatmapper.forward(target_coord).sum(dim=1, keepdim=True).detach()
+    target_hm = target_hm / target_hm.sum(dim=[2, 3], keepdim=True).detach()
+
+    return Loss(
+        nn.BCELoss()(pred_hm, target_hm) * coef * 1.5 +
+        # noviy_hm_loss(pred_sk, target_sk, coef).to_tensor() * 0.5 +
+        nn.MSELoss()(pred_coord, target_coord) * (0.001 * coef) +
+        nn.L1Loss()(pred_coord, target_coord) * (0.001 * coef)
+    )

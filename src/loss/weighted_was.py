@@ -35,9 +35,9 @@ class WasLoss(nn.Module):
 
 
 def compute_ot_matrix(x1, x2):
-    M = ot.dist(x1, x2, metric='euclidean')
+    M = ot.dist(x1, x2, metric='sqeuclidean')
     a = np.ones(x1.shape[0]) / x1.shape[0]
-    return ot.emd2(a, a, M, return_matrix=True, processes=10)[1]['G']
+    return ot.emd2(a, a, M, return_matrix=True, numItermax=10000)[1]['G']
 
 
 def compute_ot_matrix_par(x1, x2):

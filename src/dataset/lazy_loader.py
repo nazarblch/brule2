@@ -215,7 +215,7 @@ class Cardio:
 
     image_size = 256
     batch_size = 4
-    test_batch_size = 4
+    test_batch_size = 8
 
     transforms = albumentations.Compose([
         albumentations.Resize(image_size, image_size),
@@ -224,7 +224,7 @@ class Cardio:
     ])
 
     def __init__(self):
-        path = "/raid/data/ibespalov/CHAZOV_dataset/folds4chamb.csv"
+        path = "/raid/data/CHAZOV_dataset/folds4chamb.csv"
         self.dataset_train = CardioDataset(path, train=True, transform=Cardio.transforms)
 
         self.loader_train = data.DataLoader(
@@ -246,6 +246,7 @@ class Cardio:
             self.test_dataset,
             batch_size=Cardio.test_batch_size,
             drop_last=False,
+            shuffle=True,
             num_workers=20
         )
 

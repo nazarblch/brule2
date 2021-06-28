@@ -229,7 +229,7 @@ if __name__ == "__main__":
 
     from matplotlib import pyplot as plt
     from dataset.probmeasure import UniformMeasure2DFactory, UniformMeasure2D01
-    from modules.linear_ot import PairwiseDistance, SOT
+
 
     N = 10
     B = 1
@@ -240,7 +240,7 @@ if __name__ == "__main__":
 
     barycenter.coord = barycenter.coord[:, torch.randperm(68)]
 
-    hm = CoordToGaussSkeleton(size, 5).forward(barycenter.coord)
-    plt.imshow(hm[0].sum(0))
-
-    plt.show()
+    # hm = CoordToGaussSkeleton(size, 5).forward(barycenter.coord)
+    # plt.imshow(hm[0].sum(0))
+    #
+    # plt.show()

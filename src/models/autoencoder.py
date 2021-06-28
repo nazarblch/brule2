@@ -32,9 +32,9 @@ class StyleGanAutoEncoder:
         self.style_encoder = GradualStyleEncoder(50, 3, mode="ir", style_count=style_count[image_size])
 
 
-    def load_state_dict(self, weights):
-        self.style_encoder.load_state_dict(weights["s"])
-        # print("commented gen load")
+    def load_state_dict(self, weights, style=True):
+        if style:
+            self.style_encoder.load_state_dict(weights["s"])
         self.generator.load_state_dict(weights['gi'])
         return self
 
