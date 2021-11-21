@@ -87,27 +87,11 @@ device = torch.device(f"cuda:{args.cuda}" if torch.cuda.is_available() else "cpu
 torch.cuda.set_device(device)
 HumanLoader.batch_size = batch_size
 
-
-g_transforms = albumentations.Compose([
-        ToNumpy(),
-        NumpyBatch(albumentations.Compose([
-            albumentations.ElasticTransform(p=0.3, alpha=150, alpha_affine=1, sigma=10),
-            albumentations.ShiftScaleRotate(p=0.5, rotate_limit=15),
-        ])),
-        ToTensor(device),
-    ])
-
 starting_model_number = 90000 + 210000
 weights = torch.load(
     f'{Paths.default.models()}/human_{str(starting_model_number).zfill(6)}.pt',
     map_location="cpu"
 )
-
-# weights_sup = torch.load(
-#     f'{Paths.default.models()}/human_sup_{str(30000).zfill(6)}.pt',
-#     map_location="cpu"
-# )
-
 
 enc_dec = StyleGanAutoEncoder(hm_nc=measure_size, image_size=image_size).load_state_dict(weights).cuda()
 
@@ -144,22 +128,20 @@ image_accumulator = Accumulator(enc_dec.generator, decay=0.99, write_every=100)
 hm_accumulator = Accumulator(hg, decay=0.99, write_every=100)
 
 
-fake, _ = enc_dec.generate(test_hm, test_noise)
-plt_img = torch.cat([test_img[:3], fake[:3]]).detach().cpu()
-plt_img = nn.Upsample(256)(plt_img)
-plt_lm = torch.cat([hg.forward(test_img)["mes"].coord[:3], test_landmarks[:3]]).detach().cpu()
-plot_img_with_lm(plt_img, plt_lm, nrows=2, ncols=3)
-
-
-for i in range(100000):
+for i in range(10000):
 
     WR.counter.update(i)
 
-    batch = next(LazyLoader.human36().loader_train_inf)
-    real_img = batch["A"].cuda()
-    cond_img = batch["cond_A"].cuda()
-    landmarks = torch.clamp(next(LazyLoader.human_landmarks(args.data_path).loader_train_inf).cuda(), max=1)
-    heatmap = heatmapper.forward(landmarks).detach()
+    try:
+        batch = next(LazyLoader.human36().loader_train_inf)
+        real_img = batch["A"].cuda()
+        cond_img = batch["cond_A"].cuda()
+        landmarks = torch.clamp(next(LazyLoader.human_landmarks(args.data_path).loader_train_inf).cuda(), max=1, min=0)
+        heatmap = heatmapper.forward(landmarks).detach()
+    except Exception as e:
+        print(e)
+        print("input data exception")
+        continue
 
     # coefs = json.load(open(os.path.join(sys.path[0], "../parameters/cycle_loss.json")))
 

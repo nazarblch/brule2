@@ -4,28 +4,25 @@ import math
 import sys, os
 
 
-sys.path.append(os.path.join(sys.path[0], '/home/nazar/PycharmProjects/brule2/src'))
-sys.path.append(os.path.join(sys.path[0], '/home/nazar/PycharmProjects/brule2/gans/'))
-
-
 from dataset.d300w import ThreeHundredW
 import ot
 
-from dataset.lazy_loader import Cardio
+from dataset.lazy_loader import Cardio, LazyLoader
 from parameters.path import Paths
 import numpy as np
 from torch.utils.data import Subset
 
 image_size = 256
 padding = 200
-N = 701
+N = 300
 prob = np.ones(padding) / padding
 
-dataset_train = Subset(Cardio().dataset_train, range(N))
+dataset_train = LazyLoader.cardio_landmarks("cardio_300/lm").dataset_train
+
 
 
 def load_landmarks(k):
-    return dataset_train[k]["keypoints"].numpy()
+    return dataset_train[k].numpy()
 
 
 landmarks = [load_landmarks(k) for k in range(N)]

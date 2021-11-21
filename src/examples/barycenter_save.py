@@ -1,11 +1,13 @@
 import sys, os
+import time
 
 import torch
 
 from barycenters.simplex import MaxCliq, CliqSampler, AllCliq, UniformCliqSampler
 from barycenters.smote import Oversampling
 
-sys.path.append(os.path.join(sys.path[0], '/home/nazar/PycharmProjects/brule2/src/'))
+sys.path.append(os.path.join(sys.path[0], '../'))
+sys.path.append(os.path.join(sys.path[0], '../../gans/'))
 
 from dataset.lazy_loader import LazyLoader, W300DatasetLoader, CelebaWithKeyPoints, Celeba
 from sklearn.neighbors import NearestNeighbors
@@ -21,13 +23,13 @@ from parameters.path import Paths
 from joblib import Parallel, delayed
 
 
-N = 300
+N = 3000
 print(N)
 dataset = LazyLoader.w300().dataset_train
 # D = np.load(f"{Paths.default.models()}/w300graph{N}.npy")
 padding = 68
 prob = np.ones(padding) / padding
-NS = 7000
+NS = 2000
 
 data_ids = np.random.permutation(np.arange(0, 3148))[0: N]
 
@@ -53,7 +55,7 @@ for i in range(N):
 
 # symmetrize distance matrix
 D = D + D.T
-print("D matrix")
+print("D matrix", D.shape)
 # ls = np.load("/home/buzun/smote_parameters/data/w300.npy")
 
 # print(ls[0] - ls3[0])
@@ -65,6 +67,7 @@ print("D matrix")
 #
 # print(bcs[0].shape)
 
+tt = time.time()
 
 
 def viz_mes(ms):
@@ -121,13 +124,15 @@ def kl(p, q):
 ent, bcs = juja(knn=11)
 print(ent)
 
+print(time.time() - tt)
+
 #
 # os.mkdir(f"{Paths.default.data()}/w300_bc_{N}")
 # os.mkdir(f"{Paths.default.data()}/w300_bc_{N}/lmbc")
 # os.mkdir(f"{Paths.default.data()}/w300_bc_{N}/lm")
 
-for i,b in enumerate(bcs):
-    np.save(f"{Paths.default.data()}/w300_bc_{N}/lmbc/{i}.npy", b)
+# for i,b in enumerate(bcs):
+#     np.save(f"{Paths.default.data()}/w300_bc_{N}/lmbc/{i}.npy", b)
 
 # for i,b in enumerate(ls):
 #     np.save(f"{Paths.default.data()}/w300_bc_{N}/lm/{i}.npy", b)

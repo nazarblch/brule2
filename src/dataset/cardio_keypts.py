@@ -11,7 +11,7 @@ from dataset.toheatmap import ToGaussHeatMap, heatmap_to_measure
 class CardioDataset(Dataset):
     def __init__(self, csv_path, train=True, transform=None):
         super().__init__()
-        self.path = "/raid/data/CHAZOV_dataset/"
+        self.path = "/raid/data/ibespalov/CHAZOV_dataset/"
         self.csv = pd.read_csv(csv_path)
         if train:
             self.csv = self.csv[self.csv["fold"] != 4]
@@ -59,11 +59,18 @@ def make_dataset(dir):
 
 
 class LandmarksDataset(Dataset):
+
+    def not_nan(self, path):
+        keypts = np.load(path)
+        return keypts[0, 0] is not None
+
     def __init__(self, path: str, transform=None):
         super().__init__()
         self.path = path
         self.transform = transform
         self.data = make_dataset(path)
+        self.data = list(filter(self.not_nan, self.data))
+
 
     def __getitem__(self, index):
         keypts = np.load(self.data[index]) # numpy - [200, 2]

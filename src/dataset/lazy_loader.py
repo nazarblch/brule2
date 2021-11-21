@@ -224,8 +224,8 @@ class Cardio:
     ])
 
     def __init__(self):
-        path = "/raid/data/CHAZOV_dataset/folds4chamb.csv"
-        self.dataset_train = CardioDataset(path, train=True, transform=Cardio.transforms)
+        path = "/raid/data/ibespalov/CHAZOV_dataset/folds4chamb.csv"
+        self.dataset_train = Subset(CardioDataset(path, train=True, transform=Cardio.transforms), list(range(0, 600, 2)))
 
         self.loader_train = data.DataLoader(
             self.dataset_train,
@@ -259,8 +259,8 @@ class CardioLandmarks:
         ToTensorV2()
     ])
 
-    def __init__(self):
-        path = "/raid/data/cardio"
+    def __init__(self, sub_path):
+        path = f"/raid/data/{sub_path}"
         self.dataset_train = LandmarksDataset(path, transform=CardioLandmarks.transforms)
 
         self.loader_train = data.DataLoader(
@@ -475,9 +475,9 @@ class LazyLoader:
         return LazyLoader.cardio_save
 
     @staticmethod
-    def cardio_landmarks():
+    def cardio_landmarks(sub_path):
         if not LazyLoader.cardio_lm_save:
-            LazyLoader.cardio_lm_save = CardioLandmarks()
+            LazyLoader.cardio_lm_save = CardioLandmarks(sub_path)
         return LazyLoader.cardio_lm_save
 
     @staticmethod

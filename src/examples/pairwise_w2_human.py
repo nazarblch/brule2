@@ -6,8 +6,6 @@ import sys, os
 from dataset.hum36 import SimpleHuman36mDataset
 from parameters.dataset import DatasetParameters
 
-sys.path.append(os.path.join(sys.path[0], '/home/nazar/PycharmProjects/brule2/src'))
-sys.path.append(os.path.join(sys.path[0], '/home/nazar/PycharmProjects/brule2/gans/'))
 
 
 from dataset.d300w import ThreeHundredW

@@ -1,4 +1,5 @@
 import sys, os
+import time
 
 import torch
 
@@ -21,22 +22,18 @@ from barycenters.sampler import Uniform2DBarycenterSampler, Uniform2DAverageSamp
 from parameters.path import Paths
 from joblib import Parallel, delayed
 
-N = 13410
-NN = 1500
+N = 100
 D = np.load(f"{Paths.default.models()}/hum36_graph{N}.npy")
-D = D[0: NN: 1, 0: NN: 1]
 padding = 32
 prob = np.ones(padding) / padding
-NS = 5000
+NS = 13410
 
-# print(D.reshape(-1).mean())
-# plt.hist(D.reshape(-1), bins=30)
-# plt.show()
 
 parser = DatasetParameters()
 args = parser.parse_args()
 for k in vars(args):
     print(f"{k}: {vars(args)[k]}")
+    "0"
 
 data = SimpleHuman36mDataset()
 data.initialize(args.data_path)
@@ -46,7 +43,7 @@ def LS(k):
     return data[k]["paired_B"].numpy()
 
 
-ls = np.asarray([LS(k) for k in range(0, NN, 1)])
+ls = np.asarray([LS(k) for k in range(0, N, 1)])
 # ls2 = np.asarray([LS(k) for k in range(NN, 2 * NN)])
 
 def viz_mes(ms):
@@ -105,10 +102,10 @@ def juja(a, b):
 
     bc_samples = list(Parallel(n_jobs=30)(delayed(juja_inside)(sample) for sample in cl_samples))
 
-    bc_mes = viz_mes(bc_samples)
-    ent = kl(ls_mes, bc_mes) + kl(bc_mes, ls_mes)
+    # bc_mes = viz_mes(bc_samples)
+    # ent = kl(ls_mes, bc_mes) + kl(bc_mes, ls_mes)
 
-    return ent, bc_samples
+    return None, bc_samples
 
 
 def kl(p, q):
@@ -124,17 +121,18 @@ def kl(p, q):
     return np.sum(np.where(p != 0, p * np.log(p / q), 0))
 
 
-ent, bcs = juja(a=0.1, b=6)
-print(ent)
+tt = time.time()
+ent, bcs = juja(a=0.1, b=15)
+print(time.time() - tt)
 
 
-
+#
 # os.mkdir(f"{Paths.default.data()}/human_part_{N}")
 # os.mkdir(f"{Paths.default.data()}/human_part_{N}/lmbc")
 # os.mkdir(f"{Paths.default.data()}/human_part_{N}/lm")
 
 # for i,b in enumerate(bcs):
-#     np.save(f"{Paths.default.data()}/human_part_{N}/lmbc/{i}.npy", b)
+#     np.save(f"{Paths.default.data()}/human_part_{N}/lmbc/{i+N}.npy", b)
 #
 # for i,b in enumerate(ls):
 #     np.save(f"{Paths.default.data()}/human_part_{N}/lm/{i}.npy", b)

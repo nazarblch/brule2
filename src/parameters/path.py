@@ -36,7 +36,7 @@ class ZhoresPath(PathProvider):
 
 class DGXPath(PathProvider):
 
-    homa = "/home/buzun/pomoika"
+    homa = "/home/nazar/pomoika"
     ausland = "/raid/data"
 
     @staticmethod

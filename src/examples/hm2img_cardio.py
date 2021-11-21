@@ -6,8 +6,8 @@ import sys, os
 
 import albumentations
 
-sys.path.append(os.path.join(sys.path[0], '/home/nazar/PycharmProjects/brule2/src'))
-sys.path.append(os.path.join(sys.path[0], '/home/nazar/PycharmProjects/brule2/gans/'))
+sys.path.append(os.path.join(sys.path[0], '../'))
+sys.path.append(os.path.join(sys.path[0], '../../gans/'))
 
 from parameters.dataset import DatasetParameters
 from parameters.model import ModelParameters
@@ -93,13 +93,13 @@ g_transforms = albumentations.Compose([
         ToTensor(device),
     ])
 
-starting_model_number = 160000 + 90000
+starting_model_number = 280000
 weights = torch.load(
-    f'{Paths.default.models()}/cardio_{str(starting_model_number).zfill(6)}.pt',
+    f'{Paths.default.models()}/cardio_part_{str(starting_model_number).zfill(6)}.pt',
     map_location="cpu"
 )
 
-enc_dec = StyleGanAutoEncoder().load_state_dict(weights).cuda()
+enc_dec = StyleGanAutoEncoder().load_state_dict(weights, style=False).cuda()
 
 discriminator_img = Discriminator(image_size)
 discriminator_img.load_state_dict(weights['di'])
@@ -107,17 +107,18 @@ discriminator_img = discriminator_img.cuda()
 
 heatmapper = ToGaussHeatMap(256, 4)
 hg = HG_heatmap(heatmapper, num_classes=200)
-hg.load_state_dict(weights['gh'])
+# hg.load_state_dict(weights['gh'])
 hg = hg.cuda()
 hm_discriminator = Discriminator(image_size, input_nc=1, channel_multiplier=1)
 hm_discriminator.load_state_dict(weights["dh"])
 hm_discriminator = hm_discriminator.cuda()
 
-gan_model_tuda = StyleGanModel[HeatmapToImage](enc_dec.generator, StyleGANLoss(discriminator_img), (0.001, 0.0015))
-gan_model_obratno = StyleGanModel[HG_skeleton](hg, StyleGANLoss(hm_discriminator), (2e-5, 0.0015/4))
+gan_model_tuda = StyleGanModel[HeatmapToImage](enc_dec.generator, StyleGANLoss(discriminator_img), (0.001/4, 0.0015/4))
+gan_model_obratno = StyleGanModel[HG_skeleton](hg, StyleGANLoss(hm_discriminator, r1=3), (2e-5, 0.0015/4))
 
 style_opt = optim.Adam(enc_dec.style_encoder.parameters(), lr=1e-5)
 
+print(f"board path: {Paths.default.board()}/cardio{int(time.time())}")
 writer = SummaryWriter(f"{Paths.default.board()}/cardio{int(time.time())}")
 WR.writer = writer
 
@@ -125,32 +126,31 @@ WR.writer = writer
 
 test_batch = next(LazyLoader.cardio().loader_train_inf)
 test_img = test_batch["image"].cuda()
-test_landmarks = next(LazyLoader.cardio_landmarks().loader_train_inf).cuda()
+test_landmarks = next(LazyLoader.cardio_landmarks(args.data_path).loader_train_inf).cuda()
 test_measure = UniformMeasure2D01(torch.clamp(test_landmarks, max=1))
 test_hm = heatmapper.forward(test_measure.coord).sum(1, keepdim=True).detach()
 test_noise = mixing_noise(batch_size, 512, 0.9, device)
 
 psp_loss = PSPLoss(id_lambda=0).cuda()
-mes_loss = MesBceWasLoss(heatmapper, bce_coef=1000000, was_coef=2000)
+mes_loss = MesBceWasLoss(heatmapper, bce_coef=100000, was_coef=2000)
 
 image_accumulator = Accumulator(enc_dec.generator, decay=0.99, write_every=100)
 hm_accumulator = Accumulator(hg, decay=0.99, write_every=100)
-
-fake, _ = enc_dec.generate(test_hm, test_noise)
-plt_img = torch.cat([test_img[:3], fake[:3]]).detach().cpu()
-plt_lm = torch.cat([hg.forward(test_img)["mes"].coord[:3], test_landmarks[:3]]).detach().cpu()
-plot_img_with_lm(plt_img, plt_lm, nrows=2, ncols=3)
 
 for i in range(100000):
 
     WR.counter.update(i)
 
-    real_img = next(LazyLoader.cardio().loader_train_inf)["image"].cuda()
-    landmarks = next(LazyLoader.cardio_landmarks().loader_train_inf).cuda()
-    measure = UniformMeasure2D01(torch.clamp(landmarks, max=1))
-    heatmap_sum = heatmapper.forward(measure.coord).sum(1, keepdim=True).detach()
+    try:
+        real_img = next(LazyLoader.cardio().loader_train_inf)["image"].cuda()
+        landmarks = next(LazyLoader.cardio_landmarks(args.data_path).loader_train_inf).cuda()
+        measure = UniformMeasure2D01(torch.clamp(landmarks, max=1))
+        heatmap_sum = heatmapper.forward(measure.coord).sum(1, keepdim=True).detach()
+    except Exception as e:
+        print(e)
+        continue
 
-    coefs = json.load(open(os.path.join(sys.path[0], "../parameters/cycle_loss.json")))
+    coefs = json.load(open(os.path.join(sys.path[0], "../parameters/cycle_loss_2.json")))
 
     fake, fake_latent = enc_dec.generate(heatmap_sum)
     fake_latent_pred = enc_dec.encode_latent(fake)
@@ -188,7 +188,7 @@ for i in range(100000):
                 'dh': hm_discriminator.state_dict(),
                 's': enc_dec.style_encoder.state_dict()
             },
-            f'{Paths.default.models()}/cardio_{str(i + starting_model_number).zfill(6)}.pt',
+            f'{Paths.default.models()}/cardio_part_{str(i + starting_model_number).zfill(6)}.pt',
         )
 
     if i % 100 == 0:

@@ -86,9 +86,9 @@ torch.cuda.set_device(device)
 Cardio.batch_size = batch_size
 
 
-starting_model_number = 260000
+starting_model_number = 264000
 weights = torch.load(
-    f'{Paths.default.models()}/cardio_{str(starting_model_number).zfill(6)}.pt',
+    f'{Paths.default.models()}/cardio_brule_sup_{str(starting_model_number).zfill(6)}.pt',
     map_location="cpu"
 )
 
